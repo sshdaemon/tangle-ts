@@ -1,0 +1,26 @@
+{
+  "name": "tangle-ts",
+  "version": "0.1.0",
+  "description": "Complexity and logic-smell checks on the lines a change touched, for TypeScript projects. Reports only what the change made worse.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "tangle": "./bin/tangle.js"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/*.test.ts",
+    "tangle": "node bin/tangle.js"
+  },
+  "dependencies": {
+    "eslint-plugin-sonarjs": "4.2.2",
+    "oxlint": "1.90.0",
+    "typescript": "6.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0"
+  }
+}

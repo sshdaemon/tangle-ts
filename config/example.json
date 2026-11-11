@@ -1,0 +1,7 @@
+{
+  "base": "origin/develop",
+  "skip": ["\\.d\\.ts$", "(^|/)migrations/", "(^|/)__generated__/", "\\.stories\\.tsx?$"],
+  "specs": "bugRules",
+  "thresholds": { "cognitiveComplexity": 15, "nesting": 3, "expressionOperators": 3 },
+  "raiseAt": 10
+}
