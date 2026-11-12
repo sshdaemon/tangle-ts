@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { ConfigError, DEFAULTS, validate } from '../src/cli/config.ts';
 import { repoKey } from '../src/cli/git.ts';
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { enclosing, functionsOf, lineStartsOf } from '../src/check/functions.ts';
 
 const SRC = `export function top() {

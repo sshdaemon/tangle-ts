@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { ChangeListError, parseChangeList, serializeChangeList } from '../src/change/change-list.ts';
 import { parseDiff, unquote } from '../src/change/diff.ts';
 import { LineRange, parseFileArg } from '../src/change/ranges.ts';
