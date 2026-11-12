@@ -59,6 +59,7 @@ test('validate rejects each malformed field with its own message', () => {
     [{ thresholds: [] }, /f: thresholds must be an object/],
     [{ thresholds: null }, /f: thresholds must be an object/],
     [{ thresholds: 3 }, /f: thresholds must be an object/],
+    [{ thresholds: { cognitive: 25 } }, /f: unknown key\(s\) thresholds\.cognitive$/],
     [{ base: '' }, /f: base must be a non-empty string/],
     [{ base: 5 }, /f: base must be a non-empty string/],
     [{ oxlint: '' }, /f: oxlint must be a path/],

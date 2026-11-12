@@ -43,6 +43,9 @@ test('usage errors exit 2 with a message', () => {
   assert.match(tangle('diff', '--changes', 'missing.json').err, /--changes: .*missing\.json does not exist/);
   assert.match(tangle('files', '../elsewhere.ts').err, /is outside the repo/);
   assert.match(tangle('files', 'gone.ts').err, /^gone\.ts does not exist/);
+  assert.deepEqual([tangle('diff', '--bogus').code, /Unknown option '--bogus'/.test(tangle('diff', '--bogus').err)], [2, true]);
+  assert.deepEqual([tangle('diff', '--base').code, /--base/.test(tangle('diff', '--base').err)], [2, true]);
+  assert.deepEqual([tangle('files', 'a.ts:40-10').code, tangle('files', 'a.ts:40-10').err], [2, 'a.ts:40-10: invalid line range 40-10\n']);
 });
 
 test('changes prints or writes the list; diff and files check it', () => {
@@ -68,4 +71,17 @@ test('changes prints or writes the list; diff and files check it', () => {
   assert.match(tangle('diff', '--changes', 'bad.json').err, /bad\.json: not valid JSON/);
   writeFileSync(path.join(repo, 'rel.json'), JSON.stringify({ repo: 'rel', base: 'main', head: 'working-tree', files: [] }));
   assert.match(tangle('diff', '--changes', 'rel.json').err, /repo rel is not an existing absolute path/);
+});
+
+test('a run without --out leaves the checked repo as it was', () => {
+  const outside = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'tangle-home-')));
+  const status = () => execFileSync('git', ['status', '--porcelain', '--ignored'], { cwd: repo, encoding: 'utf8' });
+  try {
+    const before = status();
+    const r = spawnSync(process.execPath, [BIN, 'diff', '--base', 'main', '--quiet'], { cwd: repo, encoding: 'utf8', env: { ...process.env, TANGLE_HOME: outside } });
+    assert.equal(r.status, 0);
+    assert.equal(status(), before);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
 });
