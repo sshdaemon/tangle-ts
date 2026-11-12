@@ -1,9 +1,9 @@
 import type { ChangedFile, TriageDecision } from './types.ts';
 
 /** Paths that hold no logic worth checking. Regexes on the repo-relative path. */
-export const DEFAULT_SKIP: readonly string[] = [String.raw`\.d\.ts$`, '(^|/)migrations/', '(^|/)__generated__/', String.raw`\.stories\.tsx?$`];
+export const DEFAULT_SKIP: readonly string[] = [String.raw`\.d\.[mc]?ts$`, '(^|/)migrations/', '(^|/)__generated__/', String.raw`\.stories\.tsx?$`];
 
-export const SPEC_PATTERN = /\.(spec|test|e2e-spec)\.tsx?$/;
+export const SPEC_PATTERN = /\.(spec|test|e2e-spec)\.[mc]?tsx?$/;
 
 /** `bugRules`: specs get only the bug rules; `skip`: specs are dropped; `all`: specs get every rule. */
 export type SpecMode = 'bugRules' | 'skip' | 'all';
