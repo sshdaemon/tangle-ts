@@ -1,7 +1,7 @@
 import type { ChangedFile, TriageDecision } from './types.ts';
 
 /** Paths that hold no logic worth checking. Regexes on the repo-relative path. */
-export const DEFAULT_SKIP: readonly string[] = ['\\.d\\.ts$', '(^|/)migrations/', '(^|/)__generated__/', '\\.stories\\.tsx?$'];
+export const DEFAULT_SKIP: readonly string[] = [String.raw`\.d\.ts$`, '(^|/)migrations/', '(^|/)__generated__/', String.raw`\.stories\.tsx?$`];
 
 export const SPEC_PATTERN = /\.(spec|test|e2e-spec)\.tsx?$/;
 

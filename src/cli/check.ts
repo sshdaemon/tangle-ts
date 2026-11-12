@@ -2,10 +2,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import os from 'node:os';
 import path from 'node:path';
 import { triage } from '../change/triage.ts';
-import { WORKING_TREE, type ChangeList, type TriageDecision } from '../change/types.ts';
-import { analyze, type FileInput, type FileVersion } from '../check/analyze.ts';
+import { WORKING_TREE } from '../change/types.ts';
+import type { ChangeList, TriageDecision } from '../change/types.ts';
+import { analyze } from '../check/analyze.ts';
+import type { FileInput, FileVersion } from '../check/analyze.ts';
 import { functionsOf, lineStartsOf } from '../check/functions.ts';
-import { defaultOxlintBin, oxlintConfig, runOxlint, type Diagnostic } from '../check/oxlint.ts';
+import { defaultOxlintBin, oxlintConfig, runOxlint } from '../check/oxlint.ts';
+import type { Diagnostic } from '../check/oxlint.ts';
 import { RULES } from '../check/rules.ts';
 import { renderMarkdown } from '../report/render.ts';
 import type { Report } from '../report/types.ts';
@@ -61,11 +64,6 @@ export async function check(input: CheckInput): Promise<Report> {
       runOxlint(bin, configPath, headRoot, headPaths, input.signal),
       runOxlint(bin, configPath, baseDir, [...baseFiles.values()], input.signal),
     ]);
-    const byFile = (diags: Diagnostic[]) => {
-      const m = new Map<string, Diagnostic[]>();
-      for (const d of diags) m.set(d.file, [...(m.get(d.file) ?? []), d]);
-      return m;
-    };
     const headBy = byFile(headLint.diagnostics);
     const baseBy = byFile(baseLint.diagnostics);
     const headUnparsed = new Set(headLint.unparsed);
@@ -146,4 +144,10 @@ function writeTo(abs: string, text: string): void {
 function version(abs: string, diagnostics: Diagnostic[]): FileVersion {
   const text = readFileSync(abs, 'utf8');
   return { text, lineStarts: lineStartsOf(text), functions: functionsOf(abs, text), diagnostics };
+}
+
+function byFile(diags: readonly Diagnostic[]): Map<string, Diagnostic[]> {
+  const m = new Map<string, Diagnostic[]>();
+  for (const d of diags) m.set(d.file, [...(m.get(d.file) ?? []), d]);
+  return m;
 }

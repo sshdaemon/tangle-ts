@@ -1,5 +1,6 @@
 import { parseDiff } from '../change/diff.ts';
-import { WORKING_TREE, type ChangeList } from '../change/types.ts';
+import { WORKING_TREE } from '../change/types.ts';
+import type { ChangeList } from '../change/types.ts';
 import { git, mergeBase, untrackedFiles } from './git.ts';
 
 /**

@@ -68,7 +68,7 @@ afterAll(() => rmSync(repo, { recursive: true, force: true }));
 test('diff reports only what the change made worse, plus bugs on changed lines', async () => {
   const list = changeListFromGit(repo, 'main', false);
   const report = await check({ list, repoKey: 'fixture', config: DEFAULTS, compare: true, out, command: 'test', version: '0', log: () => {} });
-  const got = report.findings.map((f) => `${f.where.split(':')[0]} ${f.rule.replace('sonarjs/', '')} ${f.function} ${f.severity}`).sort();
+  const got = report.findings.map((f) => `${f.where.split(':')[0]} ${f.rule.replace('sonarjs/', '')} ${f.function} ${f.severity}`).toSorted();
   assert.deepEqual(got, [
     'src/bugs.ts no-all-duplicated-branches keep medium',
     'src/bugs.ts no-identical-expressions keep medium',
@@ -84,7 +84,7 @@ test('diff reports only what the change made worse, plus bugs on changed lines',
   const grows = report.findings.find((f) => f.rule === 'sonarjs/cognitive-complexity' && f.function === 'grows')!;
   assert.deepEqual(grows.score, { before: 10, after: 30 });
   assert.match(grows.evidence, /15 allowed/);
-  assert.deepEqual(report.dropped, [{ path: 'src/skip.d.ts', reason: 'matches skip pattern \\.d\\.ts$' }]);
+  assert.deepEqual(report.dropped, [{ path: 'src/skip.d.ts', reason: String.raw`matches skip pattern \.d\.ts$` }]);
   assert.deepEqual(report.warnings, [`src/was-broken.ts did not parse at ${report.base!.commit.slice(0, 12)}; reported without comparing`]);
   assert.match(report.findings.find((f) => f.function === 'wasBroken' && f.rule === 'sonarjs/cognitive-complexity')!.claim, /\(not compared\)/);
   assert.ok(readFileSync(path.join(out, 'report.md'), 'utf8').includes('## Findings (10)'));
@@ -93,16 +93,16 @@ test('diff reports only what the change made worse, plus bugs on changed lines',
 test('files without a base reports every hit in range', async () => {
   const list = { repo, base: 'main', head: 'working-tree', files: [{ path: 'src/old-tangle.ts', status: 'modified' as const, ranges: 'whole' as const }] };
   const report = await check({ list, repoKey: 'fixture', config: DEFAULTS, compare: false, out, command: 'test', version: '0', log: () => {} });
-  assert.deepEqual(report.findings.map((f) => f.rule).sort(), ['sonarjs/cognitive-complexity', 'sonarjs/nested-control-flow']);
+  assert.deepEqual(report.findings.map((f) => f.rule).toSorted(), ['sonarjs/cognitive-complexity', 'sonarjs/nested-control-flow']);
   assert.equal(report.base, null);
 });
 
 test('finding ids stay the same when lines move', async () => {
   const list = changeListFromGit(repo, 'main', false);
   const run = () => check({ list, repoKey: 'fixture', config: DEFAULTS, compare: true, out, command: 'test', version: '0', log: () => {} });
-  const first = (await run()).findings.map((f) => f.id).sort();
+  const first = (await run()).findings.map((f) => f.id).toSorted();
   writeFileSync(path.join(repo, 'src/grows.ts'), `// moved down\n\n${tangled('grows', 3)}`);
-  const second = (await run()).findings.map((f) => f.id).sort();
+  const second = (await run()).findings.map((f) => f.id).toSorted();
   assert.deepEqual(second, first);
 });
 

@@ -117,17 +117,17 @@ test('parseDiff reads C-quoted paths and keeps a quoted file from leaking into t
     '@@ -1 +1 @@',
     '-x',
     '+++ not a header',
-    'diff --git "a/src/caf\\303\\251.ts" "b/src/caf\\303\\251.ts"',
+    String.raw`diff --git "a/src/caf\303\251.ts" "b/src/caf\303\251.ts"`,
     'deleted file mode 100644',
-    '--- "a/src/caf\\303\\251.ts"',
+    String.raw`--- "a/src/caf\303\251.ts"`,
     '+++ /dev/null',
     '@@ -1 +0,0 @@',
     '-x',
     'diff --git a/src/my file.ts b/src/my file.ts',
     'new file mode 100644',
-    'diff --git "a/src/q\\"uote.ts" "b/src/q\\"uote.ts"',
-    '--- "a/src/q\\"uote.ts"',
-    '+++ "b/src/q\\"uote.ts"',
+    String.raw`diff --git "a/src/q\"uote.ts" "b/src/q\"uote.ts"`,
+    String.raw`--- "a/src/q\"uote.ts"`,
+    String.raw`+++ "b/src/q\"uote.ts"`,
     '@@ -2,0 +3 @@',
     '+y',
     '',
@@ -137,21 +137,21 @@ test('parseDiff reads C-quoted paths and keeps a quoted file from leaking into t
     { path: 'src/my file.ts', status: 'added', ranges: 'whole' },
     { path: 'src/q"uote.ts', status: 'modified', ranges: [{ start: 3, end: 3 }] },
   ]);
-  assert.equal(unquote('"caf\\303\\251\\t.ts"'), 'café\t.ts');
+  assert.equal(unquote(String.raw`"caf\303\251\t.ts"`), 'café\t.ts');
 });
 
 test('parseDiff names an empty added file from its header, quoted or with spaces', () => {
   const header = (h: string) => parseDiff(`diff --git ${h}\nnew file mode 100644\nindex 0000000..e69de29\n`);
   assert.deepEqual(header('a/src/my file.ts b/src/my file.ts'), [{ path: 'src/my file.ts', status: 'added', ranges: 'whole' }]);
-  assert.deepEqual(header('"a/src/caf\\303\\251.ts" "b/src/caf\\303\\251.ts"'), [{ path: 'src/café.ts', status: 'added', ranges: 'whole' }]);
-  assert.deepEqual(header('"a/src/q\\"x.ts" "b/src/q\\"x.ts"'), [{ path: 'src/q"x.ts', status: 'added', ranges: 'whole' }]);
+  assert.deepEqual(header(String.raw`"a/src/caf\303\251.ts" "b/src/caf\303\251.ts"`), [{ path: 'src/café.ts', status: 'added', ranges: 'whole' }]);
+  assert.deepEqual(header(String.raw`"a/src/q\"x.ts" "b/src/q\"x.ts"`), [{ path: 'src/q"x.ts', status: 'added', ranges: 'whole' }]);
 });
 
 test('unquote leaves unquoted text alone and decodes every escape', () => {
   assert.equal(unquote('plain.ts'), 'plain.ts');
   assert.equal(unquote('"'), '"');
-  assert.equal(unquote('"a\\"b\\\\c\\n"'), 'a"b\\c\n');
-  assert.equal(unquote('"\\1234"'), 'S4');
+  assert.equal(unquote(String.raw`"a\"b\\c\n"`), 'a"b\\c\n');
+  assert.equal(unquote(String.raw`"\1234"`), 'S4');
 });
 
 test('LineRange.merge sorts, then joins touching and overlapping ranges', () => {
@@ -211,7 +211,7 @@ test('parseDiff handles empty output, a preamble and a new binary file', () => {
 test('unquote only decodes a fully quoted string, and only three-digit octal escapes', () => {
   assert.equal(unquote('"abc'), '"abc');
   assert.equal(unquote('abc"'), 'abc"');
-  assert.equal(unquote('"\\x123"'), 'x123');
+  assert.equal(unquote(String.raw`"\x123"`), 'x123');
 });
 
 test('triage gives specs every rule with specs: all', () => {
