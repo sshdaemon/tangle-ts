@@ -6,67 +6,70 @@ import type { ChangedFile, LineRange as Range } from './types.ts';
  * new file. Deleted files, pure deletions and binary files are left out.
  */
 export function parseDiff(text: string): ChangedFile[] {
-  const out: ChangedFile[] = [];
-  let cur: { path: string; oldPath: string; added: boolean; deleted: boolean; renamed: boolean; inHunks: boolean; ranges: Range[] } | undefined;
-  const flush = () => {
-    if (!cur || cur.deleted) return;
-    if (cur.ranges.length === 0 && !cur.renamed && !cur.added) return;
-    const status = cur.added ? 'added' : cur.renamed ? 'renamed' : 'modified';
-    out.push({
-      path: cur.path,
-      status,
-      ...(cur.renamed ? { oldPath: cur.oldPath } : {}),
-      ranges: cur.added ? 'whole' : LineRange.merge(cur.ranges),
-    });
-  };
+  const files: FileDiff[] = [];
   for (const line of text.split('\n')) {
     if (line.startsWith('diff --git ')) {
-      flush();
-      const [oldPath, newPath] = headerPaths(line.slice('diff --git '.length));
-      cur = { path: newPath, oldPath, added: false, deleted: false, renamed: false, inHunks: false, ranges: [] };
-      continue;
+      const path = headerPath(line.slice('diff --git '.length));
+      files.push({ path, oldPath: path, added: false, skip: false, renamed: false, inHunks: false, ranges: [] });
+    } else if (files.length > 0) {
+      readLine(files[files.length - 1]!, line);
     }
-    if (!cur) continue;
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-    if (hunk) {
-      cur.inHunks = true;
-      const start = Number(hunk[1]);
-      const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
-      if (count > 0) cur.ranges.push(LineRange.of(start, start + count - 1));
-      continue;
-    }
-    // Inside hunks, every line is content, even one that reads like a header.
-    if (cur.inHunks) continue;
-    if (line.startsWith('new file mode')) cur.added = true;
-    else if (line.startsWith('deleted file mode')) cur.deleted = true;
-    else if (line.startsWith('rename from ')) {
-      cur.renamed = true;
-      cur.oldPath = unquote(line.slice('rename from '.length));
-    } else if (line.startsWith('rename to ')) cur.path = unquote(line.slice('rename to '.length));
-    else if (line.startsWith('+++ ') && line !== '+++ /dev/null') cur.path = stripPrefix(unquote(line.slice('+++ '.length)), 'b/');
-    else if (line.startsWith('Binary files ')) cur.deleted = true;
   }
-  flush();
-  return out;
+  return files.flatMap((f) => changedFile(f) ?? []);
+}
+
+/** One file's section of the diff while it is read. `skip` marks deleted and binary files. */
+interface FileDiff {
+  path: string;
+  oldPath: string;
+  added: boolean;
+  skip: boolean;
+  renamed: boolean;
+  inHunks: boolean;
+  ranges: Range[];
+}
+
+const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+
+function readLine(f: FileDiff, line: string): void {
+  const hunk = HUNK.exec(line);
+  if (hunk) {
+    f.inHunks = true;
+    const start = Number(hunk[1]);
+    const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
+    if (count > 0) f.ranges.push(LineRange.of(start, start + count - 1));
+    return;
+  }
+  // Inside hunks, every line is content, even one that reads like a header.
+  if (!f.inHunks) readHeaderLine(f, line);
+}
+
+function readHeaderLine(f: FileDiff, line: string): void {
+  if (line.startsWith('new file mode')) f.added = true;
+  else if (line.startsWith('deleted file mode') || line.startsWith('Binary files ')) f.skip = true;
+  else if (line.startsWith('rename from ')) {
+    f.renamed = true;
+    f.oldPath = unquote(line.slice('rename from '.length));
+  } else if (line.startsWith('rename to ')) f.path = unquote(line.slice('rename to '.length));
+  else if (line.startsWith('+++ ') && line !== '+++ /dev/null') f.path = stripPrefix(unquote(line.slice('+++ '.length)), 'b/');
+}
+
+function changedFile(f: FileDiff): ChangedFile | undefined {
+  if (f.skip) return undefined;
+  if (f.added) return { path: f.path, status: 'added', ranges: 'whole' };
+  if (f.renamed) return { path: f.path, status: 'renamed', oldPath: f.oldPath, ranges: LineRange.merge(f.ranges) };
+  if (f.ranges.length === 0) return undefined;
+  return { path: f.path, status: 'modified', ranges: LineRange.merge(f.ranges) };
 }
 
 /**
- * The a/ and b/ paths of a `diff --git` header. Either may be C-quoted. Unquoted paths may hold
- * spaces; then the header is split in the middle, which is exact for every header that is not a
- * rename, and renames are corrected by the `rename from`/`rename to` lines that follow.
+ * The b/ path of a `diff --git` header. Only an empty added file relies on it; every other file is
+ * named again by its `+++` or `rename to` line. Both sides are the same path then, so a quoted header
+ * is two quoted tokens and an unquoted one splits in the middle, spaces and all.
  */
-function headerPaths(rest: string): [string, string] {
-  if (rest.startsWith('"')) {
-    const end = closingQuote(rest, 0);
-    const first = unquote(rest.slice(0, end + 1));
-    return [stripPrefix(first, 'a/'), stripPrefix(unquote(rest.slice(end + 2)), 'b/')];
-  }
-  if (rest.endsWith('"')) {
-    const start = rest.lastIndexOf(' "');
-    return [stripPrefix(rest.slice(0, start), 'a/'), stripPrefix(unquote(rest.slice(start + 1)), 'b/')];
-  }
-  const half = (rest.length - 1) / 2;
-  return [stripPrefix(rest.slice(0, half), 'a/'), stripPrefix(rest.slice(half + 1), 'b/')];
+function headerPath(rest: string): string {
+  if (rest.startsWith('"')) return stripPrefix(unquote(rest.slice(closingQuote(rest, 0) + 2)), 'b/');
+  return stripPrefix(rest.slice((rest.length - 1) / 2 + 1), 'b/');
 }
 
 function closingQuote(s: string, open: number): number {

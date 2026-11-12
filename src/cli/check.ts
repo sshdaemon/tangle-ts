@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import os from 'node:os';
 import path from 'node:path';
 import { triage } from '../change/triage.ts';
-import { WORKING_TREE, type ChangeList } from '../change/types.ts';
+import { WORKING_TREE, type ChangeList, type TriageDecision } from '../change/types.ts';
 import { analyze, type FileInput, type FileVersion } from '../check/analyze.ts';
 import { functionsOf, lineStartsOf } from '../check/functions.ts';
 import { defaultOxlintBin, oxlintConfig, runOxlint, type Diagnostic } from '../check/oxlint.ts';
@@ -48,32 +48,12 @@ export async function check(input: CheckInput): Promise<Report> {
     const headRoot = onDisk ? root : path.join(tmp, 'head');
     const kept = decisions.filter((d) => {
       if (!d.kept) return false;
-      if (onDisk) {
-        if (existsSync(path.join(root, d.file.path))) return true;
-        warnings.push(`${d.file.path} is in the change list but not in the working tree`);
-        return false;
-      }
-      const text = showFile(root, headCommit!, d.file.path);
-      if (text === undefined) {
-        warnings.push(`${d.file.path} is in the change list but not in ${headCommit!.slice(0, 12)}`);
-        return false;
-      }
-      writeTo(path.join(headRoot, d.file.path), text);
-      return true;
+      const missing = onDisk ? missingOnDisk(root, d.file.path) : copyFromCommit(root, headCommit!, d.file.path, headRoot);
+      if (missing) warnings.push(`${d.file.path} is in the change list but not in ${missing}`);
+      return !missing;
     });
     const baseDir = path.join(tmp, 'base');
-    const baseFiles = new Map<string, string>();
-    if (base) {
-      for (const d of kept) {
-        if (d.file.status === 'added') continue;
-        const from = d.file.oldPath ?? d.file.path;
-        const text = showFile(root, base.commit, from);
-        if (text === undefined) continue;
-        const abs = path.join(baseDir, d.file.path);
-        writeTo(abs, text);
-        baseFiles.set(d.file.path, abs);
-      }
-    }
+    const baseFiles = base ? copyBaseVersions(root, base.commit, kept, baseDir) : new Map<string, string>();
     const bin = config.oxlint ?? defaultOxlintBin();
     const headPaths = kept.map((d) => path.join(headRoot, d.file.path));
     log(`linting ${headPaths.length} file(s) and ${baseFiles.size} before version(s)`);
@@ -130,6 +110,32 @@ export async function check(input: CheckInput): Promise<Report> {
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+/** Writes each file's before version under `dir`, keyed by its path in the change. Added files have none. */
+function copyBaseVersions(root: string, commit: string, kept: readonly TriageDecision[], dir: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const { file } of kept) {
+    const text = file.status === 'added' ? undefined : showFile(root, commit, file.oldPath ?? file.path);
+    if (text === undefined) continue;
+    const abs = path.join(dir, file.path);
+    writeTo(abs, text);
+    out.set(file.path, abs);
+  }
+  return out;
+}
+
+/** Where the file is missing ("the working tree"), or undefined when it is there. */
+function missingOnDisk(root: string, file: string): string | undefined {
+  return existsSync(path.join(root, file)) ? undefined : 'the working tree';
+}
+
+/** Writes the file as it is at `commit` under `dir`; returns the short commit when it is not there. */
+function copyFromCommit(root: string, commit: string, file: string, dir: string): string | undefined {
+  const text = showFile(root, commit, file);
+  if (text === undefined) return commit.slice(0, 12);
+  writeTo(path.join(dir, file), text);
+  return undefined;
 }
 
 function writeTo(abs: string, text: string): void {
