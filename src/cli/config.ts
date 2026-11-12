@@ -63,9 +63,6 @@ export function validate(raw: unknown, source: string): ToolConfig {
   }
   const specs = user['specs'] ?? DEFAULTS.specs;
   if (specs !== 'bugRules' && specs !== 'skip' && specs !== 'all') throw new ConfigError(`${source}: specs must be bugRules, skip or all`);
-  const t = user['thresholds'];
-  if (t !== undefined && (!t || typeof t !== 'object' || Array.isArray(t))) throw new ConfigError(`${source}: thresholds must be an object`);
-  const tu = (t ?? {}) as Record<string, unknown>;
   const base = user['base'] ?? DEFAULTS.base;
   if (typeof base !== 'string' || base === '') throw new ConfigError(`${source}: base must be a non-empty string`);
   const oxlint = user['oxlint'];
@@ -74,13 +71,22 @@ export function validate(raw: unknown, source: string): ToolConfig {
     base,
     skip,
     specs,
-    thresholds: {
-      cognitiveComplexity: nonNegativeInt(tu['cognitiveComplexity'], 'thresholds.cognitiveComplexity', source) ?? DEFAULTS.thresholds.cognitiveComplexity,
-      nesting: nonNegativeInt(tu['nesting'], 'thresholds.nesting', source) ?? DEFAULTS.thresholds.nesting,
-      expressionOperators: nonNegativeInt(tu['expressionOperators'], 'thresholds.expressionOperators', source) ?? DEFAULTS.thresholds.expressionOperators,
-    },
+    thresholds: thresholdsOf(user['thresholds'], source),
     raiseAt: nonNegativeInt(user['raiseAt'], 'raiseAt', source) ?? DEFAULTS.raiseAt,
     ...(oxlint ? { oxlint: path.resolve(oxlint as string) } : {}),
+  };
+}
+
+function thresholdsOf(raw: unknown, source: string): Thresholds {
+  if (raw === undefined) return DEFAULTS.thresholds;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ConfigError(`${source}: thresholds must be an object`);
+  const t = raw as Record<string, unknown>;
+  const unknown = Object.keys(t).filter((k) => !Object.hasOwn(DEFAULTS.thresholds, k));
+  if (unknown.length > 0) throw new ConfigError(`${source}: unknown key(s) ${unknown.map((k) => `thresholds.${k}`).join(', ')}`);
+  return {
+    cognitiveComplexity: nonNegativeInt(t['cognitiveComplexity'], 'thresholds.cognitiveComplexity', source) ?? DEFAULTS.thresholds.cognitiveComplexity,
+    nesting: nonNegativeInt(t['nesting'], 'thresholds.nesting', source) ?? DEFAULTS.thresholds.nesting,
+    expressionOperators: nonNegativeInt(t['expressionOperators'], 'thresholds.expressionOperators', source) ?? DEFAULTS.thresholds.expressionOperators,
   };
 }
 

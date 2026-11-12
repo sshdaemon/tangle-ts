@@ -3,7 +3,7 @@ import { test } from 'vitest';
 import { ChangeListError, parseChangeList, serializeChangeList } from '../src/change/change-list.ts';
 import { parseDiff, unquote } from '../src/change/diff.ts';
 import { LineRange, parseFileArg } from '../src/change/ranges.ts';
-import { triage } from '../src/change/triage.ts';
+import { DEFAULT_SKIP, triage } from '../src/change/triage.ts';
 
 const DIFF = `diff --git a/src/a.ts b/src/a.ts
 index 1..2 100644
@@ -101,6 +101,8 @@ test('triage drops non-TS and skipped paths, and limits specs to the bug rules b
     ],
   );
   assert.equal(triage([f('a.spec.ts')], [], 'skip')[0]!.kept, false);
+  assert.deepEqual(triage([f('a.spec.mts'), f('a.test.cts')], [], 'bugRules').map((d) => [d.kept, d.sizeRules]), [[true, false], [true, false]]);
+  assert.deepEqual(triage([f('x.d.mts'), f('x.d.cts')], DEFAULT_SKIP, 'all').map((d) => d.kept), [false, false]);
 });
 
 test('parseFileArg reads path, path:line and path:start-end', () => {

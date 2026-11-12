@@ -67,20 +67,18 @@ interface Options {
   readonly help?: boolean | undefined;
 }
 
+const OPTIONS = {
+  repo: { type: 'string' },
+  base: { type: 'string' },
+  changes: { type: 'string' },
+  committed: { type: 'boolean' },
+  out: { type: 'string' },
+  quiet: { type: 'boolean' },
+  help: { type: 'boolean', short: 'h' },
+} as const;
+
 async function run(argv: string[]): Promise<number> {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      repo: { type: 'string' },
-      base: { type: 'string' },
-      changes: { type: 'string' },
-      committed: { type: 'boolean' },
-      out: { type: 'string' },
-      quiet: { type: 'boolean' },
-      help: { type: 'boolean', short: 'h' },
-    },
-  });
+  const { values, positionals } = parseArgv(argv);
   const [command, ...rest] = positionals;
   if (values.help) {
     process.stdout.write(USAGE);
@@ -112,6 +110,14 @@ async function run(argv: string[]): Promise<number> {
   return 0;
 }
 
+function parseArgv(argv: string[]) {
+  try {
+    return parseArgs({ args: argv, allowPositionals: true, options: OPTIONS });
+  } catch (err) {
+    throw new UsageError(err instanceof Error ? err.message : String(err));
+  }
+}
+
 function checkUsage(command: string, rest: readonly string[], values: Options): void {
   if (!['diff', 'files', 'changes'].includes(command)) throw new UsageError(`unknown command ${command}\n${USAGE}`);
   if (command !== 'files' && rest.length > 0) throw new UsageError(`${command} takes no paths`);
@@ -124,7 +130,7 @@ function checkUsage(command: string, rest: readonly string[], values: Options): 
 function searchStart(command: string, rest: readonly string[], values: Options): string {
   if (values.repo) return values.repo;
   if (command !== 'files') return '.';
-  const first = path.resolve(parseFileArg(rest[0]!).path);
+  const first = path.resolve(fileArgParts(rest[0]!).path);
   return existsSync(first) ? path.dirname(first) : '.';
 }
 
@@ -174,12 +180,20 @@ function readList(file: string): ChangeList {
 
 /** A `files` argument, relative to the cwd, as a modified file of the repo. */
 function fileArg(root: string, arg: string): ChangeList['files'][number] {
-  const { path: p, ranges } = parseFileArg(arg);
+  const { path: p, ranges } = fileArgParts(arg);
   const abs = path.resolve(p);
   const rel = path.relative(root, abs);
   if (rel.startsWith('..') || path.isAbsolute(rel)) throw new UsageError(`${p} is outside the repo ${root}`);
   if (!existsSync(abs)) throw new UsageError(`${p} does not exist`);
   return { path: rel.split(path.sep).join('/'), status: 'modified', ranges };
+}
+
+function fileArgParts(arg: string): ReturnType<typeof parseFileArg> {
+  try {
+    return parseFileArg(arg);
+  } catch (err) {
+    throw new UsageError(`${arg}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 function packageVersion(): string {
