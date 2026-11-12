@@ -84,7 +84,7 @@ test('diff reports only what the change made worse, plus bugs on changed lines',
   const grows = report.findings.find((f) => f.rule === 'sonarjs/cognitive-complexity' && f.function === 'grows')!;
   assert.deepEqual(grows.score, { before: 10, after: 30 });
   assert.match(grows.evidence, /15 allowed/);
-  assert.deepEqual(report.dropped, [{ path: 'src/skip.d.ts', reason: String.raw`matches skip pattern \.d\.ts$` }]);
+  assert.deepEqual(report.dropped, [{ path: 'src/skip.d.ts', reason: String.raw`matches skip pattern \.d\.[mc]?ts$` }]);
   assert.deepEqual(report.warnings, [`src/was-broken.ts did not parse at ${report.base!.commit.slice(0, 12)}; reported without comparing`]);
   assert.match(report.findings.find((f) => f.function === 'wasBroken' && f.rule === 'sonarjs/cognitive-complexity')!.claim, /\(not compared\)/);
   assert.ok(readFileSync(path.join(out, 'report.md'), 'utf8').includes('## Findings (10)'));
@@ -200,4 +200,29 @@ test('spec files get the bug rules only', async () => {
   const files = [{ path: 'src/x.spec.ts', status: 'modified' as const, ranges: 'whole' as const }];
   const report = await check({ list: { repo, base: 'main', head: 'working-tree', files }, repoKey: 'fixture', config: DEFAULTS, compare: false, out, command: 'test', version: '0', log: () => {} });
   assert.deepEqual(report.findings.map((f) => f.rule), ['sonarjs/no-identical-expressions']);
+});
+
+test('a scored finding that rose by less than raiseAt is low', async () => {
+  const list = changeListFromGit(repo, 'main', false);
+  const report = await check({ list, repoKey: 'fixture', config: { ...DEFAULTS, raiseAt: 30 }, compare: true, out, command: 'test', version: '0', log: () => {} });
+  const grows = report.findings.find((f) => f.rule === 'sonarjs/cognitive-complexity' && f.function === 'grows')!;
+  assert.deepEqual([grows.score, grows.severity], [{ before: 10, after: 30 }, 'low']);
+});
+
+test('size ids follow the function text, bug ids the flagged line', async () => {
+  const source = (body: string, flagged: string) =>
+    tangled('big', 2).replace('let n = 0;', `${body}\n  const o = { x: n };\n  ${flagged}`);
+  const ids = async (text: string) => {
+    writeFileSync(path.join(repo, 'src/ids.ts'), text);
+    const list = { repo, base: 'main', head: 'working-tree', files: [{ path: 'src/ids.ts', status: 'modified' as const, ranges: 'whole' as const }] };
+    const report = await check({ list, repoKey: 'fixture', config: DEFAULTS, compare: false, out, command: 'test', version: '0', log: () => {} });
+    const id = (rule: string) => report.findings.find((f) => f.rule === rule)!.id;
+    return { size: id('sonarjs/cognitive-complexity'), bug: id('sonarjs/no-identical-expressions') };
+  };
+  const first = await ids(source('let n = 0;', 'const same = o.x === o.x;'));
+  const otherLine = await ids(source('let n = 1;', 'const same = o.x === o.x;'));
+  const flaggedLine = await ids(source('let n = 1;', 'const twin = o.x === o.x;'));
+  assert.notEqual(otherLine.size, first.size);
+  assert.equal(otherLine.bug, first.bug);
+  assert.notEqual(flaggedLine.bug, otherLine.bug);
 });

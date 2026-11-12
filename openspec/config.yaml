@@ -1,0 +1,33 @@
+schema: spec-driven
+
+context: |
+  tangle is a local CLI that runs complexity and logic-smell checks on the lines a change touched in a
+  TypeScript repo, and reports only what the change made worse. It writes nothing into the repo it checks.
+  It runs its TypeScript sources directly on Node 22.18+ (type stripping, no build step), so code uses
+  only erasable syntax and .ts import paths.
+  oxlint, eslint-plugin-sonarjs and typescript are pinned to exact versions in package.json.
+  weakspot-ts reads the same change list JSON. The two tools share that format and nothing else: no code,
+  packages or config.
+  Findings never change the exit code. Exit codes are 0 done, 1 git or oxlint failed, 2 bad usage,
+  config or change list, 130 interrupted.
+  User-facing text (README, messages, reports) is short, plain English.
+
+rules:
+  proposal:
+    - Say whether the change list format changes. A change to it also needs the same change in weakspot-ts.
+  specs:
+    - Describe what a user of the CLI or a reader of report.json sees, not module or function names.
+    - Write every scenario so that it maps to one Vitest test.
+  design:
+    - List decisions the maintainer has not made yet as open questions.
+  tasks:
+    - Put a test task next to each behaviour task, not in a group at the end.
+    - End with npm run lint, npm run spec -- validate --all --strict, npm run typecheck, npm test, and tangle on its own diff.
+
+operations:
+  apply:
+    guidance:
+      - Code comments are few, one line each, and only for a non-obvious reason.
+  archive:
+    guidance:
+      - Update the README when a merged change alters commands, options, settings or the report.

@@ -14,7 +14,8 @@
     "lint": "oxlint --deny-warnings",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "tangle": "node bin/tangle.js"
+    "tangle": "node bin/tangle.js",
+    "spec": "openspec"
   },
   "dependencies": {
     "eslint-plugin-sonarjs": "4.2.2",
@@ -22,6 +23,7 @@
     "typescript": "6.0.3"
   },
   "devDependencies": {
+    "@fission-ai/openspec": "2.0.0",
     "@types/node": "24.10.0",
     "vitest": "5.0.5"
   }

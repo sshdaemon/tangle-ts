@@ -26,6 +26,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm run spec -- validate --all --strict --no-interactive
       - run: npm run typecheck
       - run: npm test
 

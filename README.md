@@ -64,7 +64,7 @@ Per-project settings live outside the project, in `~/.tangle/repos/<repo>.json`,
 ## Reading a report
 
 - Size findings carry `score` (cognitive and expression complexity: highest before and after) or `count` (places over the limit before and after). `before` is null for new code.
-- Finding ids hash the repo, file, rule, function name and the function's text, not line numbers, so a finding keeps its id when code moves.
+- Finding ids hash the repo, file, rule and function name plus the function's text (size findings) or the flagged lines (bug findings), not line numbers, so a finding keeps its id when code moves.
 - Complexity that moves between functions reads as new: logic pulled out of a callback into its method shows the method going from 0 to the callback's old score.
 
 ## Limits
@@ -78,8 +78,11 @@ Per-project settings live outside the project, in `~/.tangle/repos/<repo>.json`,
 
 ```bash
 npm run lint          # oxlint, rules in .oxlintrc.json
+npm run spec -- validate --all --strict   # needs Node 22.22+
 npm run typecheck
 npm test              # Vitest
 ```
 
-Pull requests run lint and the tests on Node 22 and 24, then tangle and [weakspot-ts](https://github.com/sshdaemon/weakspot-ts) (pinned to a commit) on the changed lines. Their reports go to the job summary and a build artifact and do not fail the build.
+Behaviour is specified in [openspec/specs](openspec/specs), one folder per capability, with scenarios written so that each maps to a test. Planned work sits in [openspec/changes](openspec/changes) until it is merged; archiving a change merges its spec changes into the specs. The specs use [OpenSpec](https://github.com/Fission-AI/OpenSpec), pinned as a dev dependency. OpenSpec sends anonymous usage stats on local runs unless `OPENSPEC_TELEMETRY=0` is set.
+
+Pull requests run lint, spec validation and the tests on Node 22 and 24, then tangle and [weakspot-ts](https://github.com/sshdaemon/weakspot-ts) (pinned to a commit) on the changed lines. Their reports go to the job summary and a build artifact and do not fail the build.
