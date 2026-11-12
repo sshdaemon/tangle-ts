@@ -78,5 +78,7 @@ Per-project settings live outside the project, in `~/.tangle/repos/<repo>.json`,
 
 ```bash
 npm run typecheck
-npm test
+npm test              # Vitest
 ```
+
+Pull requests run the tests on Node 22 and 24, then tangle and [weakspot-ts](https://github.com/sshdaemon/weakspot-ts) (pinned to a commit) on the changed lines. Their reports go to the job summary and a build artifact and do not fail the build.

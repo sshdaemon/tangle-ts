@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, before, test } from 'node:test';
+import { afterAll, beforeAll, test } from 'vitest';
 import { changeListFromGit } from '../src/cli/changes.ts';
 import { check } from '../src/cli/check.ts';
 import { DEFAULTS } from '../src/cli/config.ts';
@@ -29,7 +29,7 @@ function sh(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' });
 }
 
-before(() => {
+beforeAll(() => {
   repo = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'tangle-test-')));
   out = path.join(repo, '.out');
   sh(repo, ['init', '-q', '-b', 'main']);
@@ -60,7 +60,7 @@ before(() => {
   writeFileSync(path.join(repo, 'src/fresh2.ts'), tangled('fresh2', 2));
 });
 
-after(() => rmSync(repo, { recursive: true, force: true }));
+afterAll(() => rmSync(repo, { recursive: true, force: true }));
 
 test('diff reports only what the change made worse, plus bugs on changed lines', async () => {
   const list = changeListFromGit(repo, 'main', false);

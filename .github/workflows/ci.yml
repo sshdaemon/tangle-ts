@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the oldest major the CLI runs on (type stripping), 24 is what it is developed on.
+        node: [22, 24]
+    name: node ${{ matrix.node }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  # Runs tangle (this repo's code) and weakspot on the lines the pull request changed.
+  # Findings go to the job summary and an artifact; they do not fail the build.
+  changed-lines:
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASE: origin/${{ github.base_ref }}
+      WEAKSPOT_REF: 60019d91bd618b177c88c9b5ea8ed239f91f02e6
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: tangle
+        run: node bin/tangle.js diff --base "$BASE" --committed --out "$RUNNER_TEMP/tangle"
+      - name: Install weakspot
+        run: |
+          git clone --quiet https://github.com/sshdaemon/weakspot-ts.git "$RUNNER_TEMP/weakspot-ts"
+          git -C "$RUNNER_TEMP/weakspot-ts" checkout --quiet "$WEAKSPOT_REF"
+          npm ci --prefix "$RUNNER_TEMP/weakspot-ts" --ignore-scripts --no-audit --no-fund
+      - name: weakspot
+        run: node "$RUNNER_TEMP/weakspot-ts/bin/weakspot.js" diff --repo . --base "$BASE" --committed --depth 2 --out "$RUNNER_TEMP/weakspot"
+      - name: Summary
+        if: always()
+        run: |
+          for r in tangle weakspot; do
+            if [ -f "$RUNNER_TEMP/$r/report.md" ]; then cat "$RUNNER_TEMP/$r/report.md" >> "$GITHUB_STEP_SUMMARY"; echo >> "$GITHUB_STEP_SUMMARY"; fi
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: changed-lines-reports
+          path: |
+            ${{ runner.temp }}/tangle
+            ${{ runner.temp }}/weakspot
+          if-no-files-found: ignore
