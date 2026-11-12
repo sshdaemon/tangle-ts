@@ -139,3 +139,82 @@ test('parseDiff reads C-quoted paths and keeps a quoted file from leaking into t
   ]);
   assert.equal(unquote('"caf\\303\\251\\t.ts"'), 'café\t.ts');
 });
+
+test('parseDiff names an empty added file from its header, quoted or with spaces', () => {
+  const header = (h: string) => parseDiff(`diff --git ${h}\nnew file mode 100644\nindex 0000000..e69de29\n`);
+  assert.deepEqual(header('a/src/my file.ts b/src/my file.ts'), [{ path: 'src/my file.ts', status: 'added', ranges: 'whole' }]);
+  assert.deepEqual(header('"a/src/caf\\303\\251.ts" "b/src/caf\\303\\251.ts"'), [{ path: 'src/café.ts', status: 'added', ranges: 'whole' }]);
+  assert.deepEqual(header('"a/src/q\\"x.ts" "b/src/q\\"x.ts"'), [{ path: 'src/q"x.ts', status: 'added', ranges: 'whole' }]);
+});
+
+test('unquote leaves unquoted text alone and decodes every escape', () => {
+  assert.equal(unquote('plain.ts'), 'plain.ts');
+  assert.equal(unquote('"'), '"');
+  assert.equal(unquote('"a\\"b\\\\c\\n"'), 'a"b\\c\n');
+  assert.equal(unquote('"\\1234"'), 'S4');
+});
+
+test('LineRange.merge sorts, then joins touching and overlapping ranges', () => {
+  assert.deepEqual(LineRange.merge([LineRange.of(10, 12), LineRange.of(1, 3), LineRange.of(4, 5), LineRange.of(11, 20)]), [
+    { start: 1, end: 5 },
+    { start: 10, end: 20 },
+  ]);
+  assert.deepEqual(LineRange.merge([LineRange.of(1, 9), LineRange.of(2, 3)]), [{ start: 1, end: 9 }]);
+  assert.deepEqual(LineRange.merge([LineRange.of(1, 2), LineRange.of(4, 5)]), [{ start: 1, end: 2 }, { start: 4, end: 5 }]);
+  assert.throws(() => LineRange.of(5, 2));
+  assert.throws(() => LineRange.of(0, 2));
+});
+
+test('parseFileArg takes the range from the end only', () => {
+  assert.deepEqual(parseFileArg('a:b.ts:3-4'), { path: 'a:b.ts', ranges: [{ start: 3, end: 4 }] });
+  assert.deepEqual(parseFileArg('x.ts:12foo'), { path: 'x.ts:12foo', ranges: 'whole' });
+  assert.deepEqual(parseFileArg(':12'), { path: ':12', ranges: 'whole' });
+});
+
+test('parseChangeList rejects each malformed field with its own message', () => {
+  const ok = { repo: '/r', base: 'b', head: 'h' };
+  const file = { path: 'x.ts', status: 'modified', ranges: 'whole' };
+  const cases: [unknown, RegExp][] = [
+    [null, /f: expected a JSON object/],
+    [[], /f: expected a JSON object/],
+    ['x', /f: expected a JSON object/],
+    [{ base: 'b', head: 'h', files: [] }, /f: repo must be a non-empty string/],
+    [{ ...ok, head: '', files: [] }, /f: head must be a non-empty string/],
+    [ok, /f: files must be an array/],
+    [{ ...ok, files: [null] }, /files\[0\] must be an object/],
+    [{ ...ok, files: ['x.ts'] }, /files\[0\] must be an object/],
+    [{ ...ok, files: [{ ...file, path: 5 }] }, /files\[0\]\.path must be a repo-relative path/],
+    [{ ...ok, files: [{ ...file, path: '' }] }, /files\[0\]\.path/],
+    [{ ...ok, files: [{ ...file, path: '/abs.ts' }] }, /files\[0\]\.path/],
+    [{ ...ok, files: [file, { ...file, path: 'a/../../x.ts' }] }, /files\[1\]\.path/],
+    [{ ...ok, files: [{ ...file, status: 'deleted' }] }, /files\[0\]\.status must be added, modified or renamed/],
+    [{ ...ok, files: [{ ...file, status: 'renamed' }] }, /files\[0\]\.oldPath is required/],
+    [{ ...ok, files: [{ ...file, ranges: [[1, 2], 3] }] }, /files\[0\]\.ranges\[1\] must be \[start, end\]/],
+    [{ ...ok, files: [{ ...file, ranges: [[1, 2, 3]] }] }, /files\[0\]\.ranges\[0\] must be \[start, end\]/],
+    [{ ...ok, files: [{ ...file, ranges: [[5, 2]] }] }, /files\[0\]\.ranges\[0\] is not a valid line range/],
+    [{ ...ok, files: [{ ...file, ranges: 'all' }] }, /files\[0\]\.ranges must be an array/],
+  ];
+  for (const [raw, message] of cases) assert.throws(() => parseChangeList(raw, 'f'), message, JSON.stringify(raw));
+  for (const status of ['added', 'modified'] as const) {
+    assert.deepEqual(parseChangeList({ ...ok, files: [{ ...file, status, oldPath: 'y.ts', ranges: [[3, 4], [1, 2]] }] }, 'f').files, [
+      { path: 'x.ts', status, ranges: [{ start: 1, end: 4 }] },
+    ]);
+  }
+});
+
+test('parseDiff handles empty output, a preamble and a new binary file', () => {
+  assert.deepEqual(parseDiff(''), []);
+  assert.deepEqual(parseDiff('warning: something\n'), []);
+  assert.deepEqual(parseDiff('diff --git a/img.png b/img.png\nnew file mode 100644\nBinary files /dev/null and b/img.png differ\n'), []);
+});
+
+test('unquote only decodes a fully quoted string, and only three-digit octal escapes', () => {
+  assert.equal(unquote('"abc'), '"abc');
+  assert.equal(unquote('abc"'), 'abc"');
+  assert.equal(unquote('"\\x123"'), 'x123');
+});
+
+test('triage gives specs every rule with specs: all', () => {
+  const spec = { path: 'a.spec.ts', status: 'modified' as const, ranges: 'whole' as const };
+  assert.deepEqual(triage([spec], [], 'all').map((d) => [d.kept, d.sizeRules]), [[true, true]]);
+});

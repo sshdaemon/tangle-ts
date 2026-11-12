@@ -54,59 +54,115 @@ function hitsOf(v: FileVersion, kind: Rule['kind']): Map<string, Hit[]> {
   return groups;
 }
 
+type Compared = 'new' | 'changed' | 'uncompared';
+
+/** One rule's hits in one function, set against the same function's hits at the base. */
+interface SizeGroup {
+  readonly rule: Rule;
+  readonly limit: number | undefined;
+  readonly fn: FunctionSpan | undefined;
+  /** Head hits over the limit. */
+  readonly hits: readonly Hit[];
+  readonly headMax: number;
+  /** Base hits over the limit. */
+  readonly beforeCount: number;
+  /** Highest base score, over the limit or not. */
+  readonly baseMax: number;
+  readonly how: Compared;
+}
+
 /** Size rules: one finding per function and rule, only when the function touches the change and got worse. */
 function sizeFindings(input: FileInput, opts: AnalyzeOptions): Finding[] {
-  const head = hitsOf(input.head, 'size');
   const base = input.base ? hitsOf(input.base, 'size') : new Map<string, Hit[]>();
   const baseNames = new Set(input.base?.functions.map((f) => f.name) ?? []);
   const out: Finding[] = [];
-  for (const [k, all] of head) {
-    const rule = ruleById(all[0]!.d.rule)!;
-    const limit = rule.limit?.(opts.thresholds);
-    const over = (h: Hit) => limit === undefined || (h.score ?? 0) > limit;
-    const hits = all.filter(over);
-    if (hits.length === 0) continue;
-    const fn = hits[0]!.fn;
-    const lines = fn ? { start: fn.startLine, end: fn.endLine } : { start: Math.min(...hits.map((h) => h.d.line)), end: Math.max(...hits.map((h) => h.d.endLine)) };
-    if (!LineRange.touches(input.file.ranges, lines)) continue;
-    const before = base.get(k) ?? [];
-    const beforeOver = before.filter(over);
-    const headMax = Math.max(0, ...hits.map((h) => h.score ?? 0));
-    const baseMax = Math.max(0, ...before.map((h) => h.score ?? 0));
-    const isNew = fn !== undefined && input.base !== undefined && !baseNames.has(fn.name);
-    const added = input.compared && (input.base === undefined || isNew);
-    const worse = !input.compared || added || hits.length > beforeOver.length || (rule.score !== undefined && headMax > baseMax);
-    if (!worse) continue;
-    const name = fn?.name ?? MODULE;
-    // New or uncompared code rises from zero.
-    const rise = rule.score ? headMax - (added || !input.compared ? 0 : baseMax) : 0;
-    // `before` is null for new code and left out when nothing was compared.
-    const priorOf = (n: number) => (!input.compared ? {} : { before: added ? null : n });
-    const first = hits[0]!.d;
-    out.push({
-      id: idOf(opts.repoKey, input.file.path, rule.id, name, fn?.hash ?? ''),
-      severity: rule.score && rise >= opts.raiseAt ? 'medium' : 'low',
-      category: rule.category,
-      rule: rule.id,
-      function: name,
-      where: `${input.file.path}:${first.line}:${first.column}`,
-      claim: sizeClaim(rule, name, hits, beforeOver.length, headMax, baseMax, limit, input.compared ? (added ? 'new' : 'changed') : 'uncompared'),
-      // Scored rules run with a zero limit; show the configured one instead.
-      evidence: limit === undefined ? first.message : first.message.replace(/\b0 allowed\b/, `${limit} allowed`).replace(/maximum allowed 0\b/, `maximum allowed ${limit}`),
-      ...(rule.score ? { score: { ...priorOf(baseMax), after: headMax } } : { count: { ...priorOf(beforeOver.length), after: hits.length } }),
-    });
+  for (const [k, all] of hitsOf(input.head, 'size')) {
+    const group = sizeGroup(input, all, base.get(k) ?? [], baseNames, opts);
+    if (group && isWorse(group)) out.push(sizeFinding(input, group, opts));
   }
   return out;
 }
 
-type Compared = 'new' | 'changed' | 'uncompared';
+function sizeGroup(input: FileInput, all: readonly Hit[], before: readonly Hit[], baseNames: ReadonlySet<string>, opts: AnalyzeOptions): SizeGroup | undefined {
+  const rule = ruleById(all[0]!.d.rule)!;
+  const limit = rule.limit?.(opts.thresholds);
+  const over = (h: Hit) => limit === undefined || (h.score ?? 0) > limit;
+  const hits = all.filter(over);
+  if (hits.length === 0) return undefined;
+  const fn = hits[0]!.fn;
+  if (!LineRange.touches(input.file.ranges, linesOf(fn, hits))) return undefined;
+  return {
+    rule,
+    limit,
+    fn,
+    hits,
+    headMax: maxScore(hits),
+    beforeCount: before.filter(over).length,
+    baseMax: maxScore(before),
+    how: compared(input, fn, baseNames),
+  };
+}
 
-function sizeClaim(rule: Rule, name: string, hits: readonly Hit[], beforeCount: number, headMax: number, baseMax: number, limit: number | undefined, how: Compared): string {
+function linesOf(fn: FunctionSpan | undefined, hits: readonly Hit[]): { start: number; end: number } {
+  if (fn) return { start: fn.startLine, end: fn.endLine };
+  return { start: Math.min(...hits.map((h) => h.d.line)), end: Math.max(...hits.map((h) => h.d.endLine)) };
+}
+
+function maxScore(hits: readonly Hit[]): number {
+  return Math.max(0, ...hits.map((h) => h.score ?? 0));
+}
+
+/** New: an added file, or a function the base did not have. */
+function compared(input: FileInput, fn: FunctionSpan | undefined, baseNames: ReadonlySet<string>): Compared {
+  if (!input.compared) return 'uncompared';
+  if (input.base === undefined || (fn !== undefined && !baseNames.has(fn.name))) return 'new';
+  return 'changed';
+}
+
+function isWorse(g: SizeGroup): boolean {
+  if (g.how !== 'changed') return true;
+  return g.hits.length > g.beforeCount || (g.rule.score !== undefined && g.headMax > g.baseMax);
+}
+
+function sizeFinding(input: FileInput, g: SizeGroup, opts: AnalyzeOptions): Finding {
+  const name = g.fn?.name ?? MODULE;
+  const first = g.hits[0]!.d;
+  // New or uncompared code rises from zero.
+  const rise = g.headMax - (g.how === 'changed' ? g.baseMax : 0);
+  // `before` is null for new code and left out when nothing was compared.
+  const prior = (n: number) => (g.how === 'uncompared' ? {} : { before: g.how === 'new' ? null : n });
+  return {
+    id: idOf(opts.repoKey, input.file.path, g.rule.id, name, g.fn?.hash ?? ''),
+    severity: g.rule.score && rise >= opts.raiseAt ? 'medium' : 'low',
+    category: g.rule.category,
+    rule: g.rule.id,
+    function: name,
+    where: `${input.file.path}:${first.line}:${first.column}`,
+    claim: sizeClaim(g, name),
+    evidence: evidenceOf(first.message, g.limit),
+    ...(g.rule.score ? { score: { ...prior(g.baseMax), after: g.headMax } } : { count: { ...prior(g.beforeCount), after: g.hits.length } }),
+  };
+}
+
+/** Scored rules run with a zero limit; show the configured one instead. */
+function evidenceOf(message: string, limit: number | undefined): string {
+  if (limit === undefined) return message;
+  return message.replace(/\b0 allowed\b/, `${limit} allowed`).replace(/maximum allowed 0\b/, `maximum allowed ${limit}`);
+}
+
+function sizeClaim(g: SizeGroup, name: string): string {
   const fn = name === MODULE ? 'Module-level code' : `\`${name}\``;
-  const was = how === 'new' ? ' (new code)' : how === 'uncompared' ? ' (not compared)' : rule.score ? `, was ${baseMax}` : `, was ${beforeCount}`;
-  if (rule.id === 'sonarjs/cognitive-complexity') return `${fn} has cognitive complexity ${headMax} (limit ${limit})${was}.`;
-  if (rule.id === 'sonarjs/expression-complexity') return `${fn} has an expression with ${headMax} conditional operators (limit ${limit})${how === 'changed' ? `, most before ${baseMax}` : was}.`;
-  return `${fn}: ${rule.what} in ${hits.length} place(s)${was}.`;
+  if (g.rule.id === 'sonarjs/cognitive-complexity') return `${fn} has cognitive complexity ${g.headMax} (limit ${g.limit})${wasText(g, `, was ${g.baseMax}`)}.`;
+  if (g.rule.id === 'sonarjs/expression-complexity') {
+    return `${fn} has an expression with ${g.headMax} conditional operators (limit ${g.limit})${wasText(g, `, most before ${g.baseMax}`)}.`;
+  }
+  return `${fn}: ${g.rule.what} in ${g.hits.length} place(s)${wasText(g, `, was ${g.beforeCount}`)}.`;
+}
+
+function wasText(g: SizeGroup, changed: string): string {
+  if (g.how === 'new') return ' (new code)';
+  if (g.how === 'uncompared') return ' (not compared)';
+  return changed;
 }
 
 /** Bug rules: every hit on a changed line. */

@@ -21,38 +21,48 @@ export function functionsOf(fileName: string, text: string): FunctionSpan[] {
   const sf = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, kind);
   const out: FunctionSpan[] = [];
   const seen = new Map<string, number>();
-  /** `inClass`: the prefix is a class name, so members join with `.`; nested functions join with `/`. */
-  const visit = (node: ts.Node, prefix: string, inClass: boolean) => {
-    let next = prefix;
-    let nextInClass = false;
+  const span = (node: ts.Node, base: string): FunctionSpan => {
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    const start = node.getStart(sf);
+    const end = node.getEnd();
+    return {
+      name: n === 1 ? base : `${base}#${n}`,
+      start,
+      end,
+      startLine: sf.getLineAndCharacterOfPosition(start).line + 1,
+      endLine: sf.getLineAndCharacterOfPosition(end).line + 1,
+      hash: hashText(text.slice(start, end)),
+    };
+  };
+  const visit = (node: ts.Node, scope: Scope) => {
+    let next: Scope;
     // Overload signatures, `declare function` and abstract methods have no body and never carry hits.
     if (isFunctionLike(node) && node.body !== undefined) {
-      const base = prefix ? `${prefix}${inClass ? '.' : '/'}${localName(node)}` : localName(node);
-      const n = (seen.get(base) ?? 0) + 1;
-      seen.set(base, n);
-      const name = n === 1 ? base : `${base}#${n}`;
-      const start = node.getStart(sf);
-      const end = node.getEnd();
-      out.push({
-        name,
-        start,
-        end,
-        startLine: sf.getLineAndCharacterOfPosition(start).line + 1,
-        endLine: sf.getLineAndCharacterOfPosition(end).line + 1,
-        hash: hashText(text.slice(start, end)),
-      });
-      next = name;
+      const fn = span(node, joinName(scope, localName(node)));
+      out.push(fn);
+      next = { prefix: fn.name, inClass: false };
     } else if (ts.isClassLike(node)) {
-      const cls = node.name?.text ?? '<class>';
-      next = prefix ? `${prefix}${inClass ? '.' : '/'}${cls}` : cls;
-      nextInClass = true;
+      next = { prefix: joinName(scope, node.name?.text ?? '<class>'), inClass: true };
     } else {
-      nextInClass = inClass;
+      next = scope;
     }
-    ts.forEachChild(node, (child) => visit(child, next, nextInClass));
+    ts.forEachChild(node, (child) => visit(child, next));
   };
-  visit(sf, '', false);
+  visit(sf, { prefix: '', inClass: false });
   return out;
+}
+
+/** The name of the enclosing function or class; `inClass` when it is a class. */
+interface Scope {
+  readonly prefix: string;
+  readonly inClass: boolean;
+}
+
+/** Class members join with `.`, nested functions with `/`. */
+function joinName(scope: Scope, local: string): string {
+  if (!scope.prefix) return local;
+  return `${scope.prefix}${scope.inClass ? '.' : '/'}${local}`;
 }
 
 /** The innermost function containing a UTF-16 position, or undefined at module level. */
@@ -76,40 +86,56 @@ export function hashText(text: string): string {
 
 type FunctionLike = ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration | ts.AccessorDeclaration | ts.ArrowFunction | ts.FunctionExpression;
 
+const FUNCTION_KINDS: ReadonlySet<ts.SyntaxKind> = new Set([
+  ts.SyntaxKind.FunctionDeclaration,
+  ts.SyntaxKind.MethodDeclaration,
+  ts.SyntaxKind.Constructor,
+  ts.SyntaxKind.GetAccessor,
+  ts.SyntaxKind.SetAccessor,
+  ts.SyntaxKind.ArrowFunction,
+  ts.SyntaxKind.FunctionExpression,
+]);
+
 function isFunctionLike(node: ts.Node): node is FunctionLike {
-  return (
-    ts.isFunctionDeclaration(node) ||
-    ts.isMethodDeclaration(node) ||
-    ts.isConstructorDeclaration(node) ||
-    ts.isGetAccessorDeclaration(node) ||
-    ts.isSetAccessorDeclaration(node) ||
-    ts.isArrowFunction(node) ||
-    ts.isFunctionExpression(node)
-  );
+  return FUNCTION_KINDS.has(node.kind);
 }
 
 function localName(node: FunctionLike): string {
+  return ownName(node) ?? declaredName(node.parent) ?? callbackName(node) ?? unnamed(node);
+}
+
+function unnamed(node: FunctionLike): string {
+  return ts.isJsxExpression(node.parent) ? '<jsx handler>' : '<anonymous>';
+}
+
+/** A name the function carries itself: `constructor`, `get x`, `function f`, method `m`. */
+function ownName(node: FunctionLike): string | undefined {
   if (ts.isConstructorDeclaration(node)) return 'constructor';
   if (ts.isGetAccessorDeclaration(node)) return `get ${propertyName(node.name)}`;
   if (ts.isSetAccessorDeclaration(node)) return `set ${propertyName(node.name)}`;
-  if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isFunctionExpression(node)) && node.name) return propertyName(node.name);
-  const parent = node.parent;
-  if ((ts.isVariableDeclaration(parent) || ts.isPropertyDeclaration(parent) || ts.isPropertyAssignment(parent)) && parent.name && !ts.isObjectBindingPattern(parent.name) && !ts.isArrayBindingPattern(parent.name)) {
-    return propertyName(parent.name);
-  }
-  if (ts.isCallExpression(parent) && parent.arguments.includes(node as ts.Expression)) {
-    const callee = parent.expression;
-    const called = ts.isPropertyAccessExpression(callee) ? callee.name.text : ts.isIdentifier(callee) ? callee.text : 'call';
-    // `it('creates a booking', () => …)` reads better by its title than as the nth callback.
-    const title = parent.arguments[0];
-    if (title && title !== node && (ts.isStringLiteral(title) || ts.isNoSubstitutionTemplateLiteral(title))) {
-      const t = title.text.replace(/\s+/g, ' ').replace(/`/g, "'").trim();
-      return `${called}(${JSON.stringify(t.length > 50 ? `${t.slice(0, 47)}...` : t)})`;
-    }
-    return `<${called} callback>`;
-  }
-  if (ts.isJsxExpression(parent)) return '<jsx handler>';
-  return '<anonymous>';
+  if (ts.isArrowFunction(node) || !node.name) return undefined;
+  return propertyName(node.name);
+}
+
+/** The name it is assigned to: `const f = …`, a class field, an object key. */
+function declaredName(parent: ts.Node): string | undefined {
+  if (!ts.isVariableDeclaration(parent) && !ts.isPropertyDeclaration(parent) && !ts.isPropertyAssignment(parent)) return undefined;
+  if (ts.isObjectBindingPattern(parent.name) || ts.isArrayBindingPattern(parent.name)) return undefined;
+  return propertyName(parent.name);
+}
+
+/** A call argument: `it("title")` when the call's first argument is a title, else `<map callback>`. */
+function callbackName(node: FunctionLike): string | undefined {
+  const call = node.parent;
+  if (!ts.isCallExpression(call) || !call.arguments.includes(node as ts.Expression)) return undefined;
+  const callee = call.expression;
+  let called = 'call';
+  if (ts.isPropertyAccessExpression(callee)) called = callee.name.text;
+  else if (ts.isIdentifier(callee)) called = callee.text;
+  const title = call.arguments[0];
+  if (!title || !(ts.isStringLiteral(title) || ts.isNoSubstitutionTemplateLiteral(title))) return `<${called} callback>`;
+  const t = title.text.replace(/\s+/g, ' ').replace(/`/g, "'").trim();
+  return `${called}(${JSON.stringify(t.length > 50 ? `${t.slice(0, 47)}...` : t)})`;
 }
 
 function propertyName(name: ts.PropertyName | ts.DeclarationName): string {

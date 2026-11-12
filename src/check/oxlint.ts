@@ -46,7 +46,7 @@ export function oxlintConfig(rules: readonly Rule[], thresholds: Thresholds): ob
   };
 }
 
-interface RawDiagnostic {
+export interface RawDiagnostic {
   code?: string;
   message?: string;
   filename?: string;
@@ -69,9 +69,14 @@ export async function runOxlint(bin: string, configPath: string, cwd: string, fi
   } catch {
     throw new OxlintError(`oxlint exited ${code} without a JSON report: ${(stderr || stdout).trim().slice(0, 500)}`);
   }
+  return readReport(parsed.diagnostics ?? [], cwd);
+}
+
+/** oxlint's JSON diagnostics as positions in the files' text; file names are relative to `cwd`. */
+export function readReport(raw: readonly RawDiagnostic[], cwd: string): LintResult {
   const sources = new Map<string, Buffer>();
   const unparsed = new Set<string>();
-  const diagnostics = (parsed.diagnostics ?? []).flatMap((d): Diagnostic[] => {
+  const diagnostics = raw.flatMap((d): Diagnostic[] => {
     if (!d.filename) return [];
     const file = path.resolve(cwd, d.filename);
     // Parse errors carry no rule code.
