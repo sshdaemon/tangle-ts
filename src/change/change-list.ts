@@ -43,12 +43,9 @@ export function parseChangeList(raw: unknown, source: string): ChangeList {
         }),
       );
     } else return fail(`files[${i}].ranges must be an array of [start, end] or "whole"`);
-    return {
-      path: e['path'] as string,
-      status: status as ChangedFile['status'],
-      ...(status === 'renamed' ? { oldPath: e['oldPath'] as string } : {}),
-      ranges: parsed,
-    };
+    const path = e['path'] as string;
+    if (status === 'renamed') return { path, status, oldPath: e['oldPath'] as string, ranges: parsed };
+    return { path, status: status as ChangedFile['status'], ranges: parsed };
   });
   return { repo: o['repo'] as string, base: o['base'] as string, head: o['head'] as string, files };
 }

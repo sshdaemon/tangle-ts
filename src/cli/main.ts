@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { ChangeListError, parseChangeList, serializeChangeList } from '../change/change-list.ts';
 import { parseFileArg } from '../change/ranges.ts';
-import { WORKING_TREE, type ChangeList } from '../change/types.ts';
+import { WORKING_TREE } from '../change/types.ts';
+import type { ChangeList } from '../change/types.ts';
 import { OxlintError } from '../check/oxlint.ts';
 import type { Report } from '../report/types.ts';
 import { changeListFromGit } from './changes.ts';
@@ -103,7 +104,7 @@ async function run(argv: string[]): Promise<number> {
   const { list, compare } = fromList ? { list: fromList, compare: true } : listFor(command, rest, root, base, values);
   const log = values.quiet ? () => {} : (line: string) => process.stderr.write(`${line}\n`);
   log(`repo: ${root} (key ${key}, config: ${source})`);
-  const out = values.out ? path.resolve(values.out) : path.join(tangleHome(), 'runs', key, new Date().toISOString().replace(/[:.]/g, '-'));
+  const out = values.out ? path.resolve(values.out) : path.join(tangleHome(), 'runs', key, new Date().toISOString().replaceAll(/[:.]/g, '-'));
   const report = await withSignals((signal) =>
     check({ list, repoKey: key, config, compare, out, command: `tangle ${argv.join(' ')}`, version: packageVersion(), log, signal }),
   );

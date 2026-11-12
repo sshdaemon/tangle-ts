@@ -81,7 +81,7 @@ export function lineStartsOf(text: string): number[] {
 }
 
 export function hashText(text: string): string {
-  return createHash('sha256').update(text.replace(/\s+/g, ' ').trim()).digest('hex').slice(0, 12);
+  return createHash('sha256').update(text.replaceAll(/\s+/g, ' ').trim()).digest('hex').slice(0, 12);
 }
 
 type FunctionLike = ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration | ts.AccessorDeclaration | ts.ArrowFunction | ts.FunctionExpression;
@@ -134,7 +134,7 @@ function callbackName(node: FunctionLike): string | undefined {
   else if (ts.isIdentifier(callee)) called = callee.text;
   const title = call.arguments[0];
   if (!title || !(ts.isStringLiteral(title) || ts.isNoSubstitutionTemplateLiteral(title))) return `<${called} callback>`;
-  const t = title.text.replace(/\s+/g, ' ').replace(/`/g, "'").trim();
+  const t = title.text.replaceAll(/\s+/g, ' ').replaceAll('`', "'").trim();
   return `${called}(${JSON.stringify(t.length > 50 ? `${t.slice(0, 47)}...` : t)})`;
 }
 

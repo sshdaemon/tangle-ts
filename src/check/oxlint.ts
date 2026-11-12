@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { type Rule, type Thresholds } from './rules.ts';
+import type { Rule, Thresholds } from './rules.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -93,7 +93,7 @@ export function readReport(raw: readonly RawDiagnostic[], cwd: string): LintResu
     }
     // oxlint offsets and columns count UTF-8 bytes; the TS parser counts UTF-16 units.
     const pos = utf16Index(src, span.offset);
-    const lineStartByte = src.lastIndexOf(0x0a, span.offset - 1) + 1;
+    const lineStartByte = src.lastIndexOf(0x0A, span.offset - 1) + 1;
     return [
       {
         file,
@@ -124,7 +124,7 @@ export function ruleId(code: string): string {
 function lineAtByte(src: Buffer, offset: number, atLeast: number): number {
   let line = 1;
   const end = Math.min(offset, src.length);
-  for (let i = 0; i < end; i++) if (src[i] === 0x0a) line++;
+  for (let i = 0; i < end; i++) if (src[i] === 0x0A) line++;
   return Math.max(line, atLeast);
 }
 

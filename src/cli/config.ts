@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DEFAULT_SKIP, type SpecMode } from '../change/triage.ts';
+import { DEFAULT_SKIP } from '../change/triage.ts';
+import type { SpecMode } from '../change/triage.ts';
 import type { Thresholds } from '../check/rules.ts';
 
 export interface ToolConfig {
@@ -49,13 +50,13 @@ export function loadConfig(key: string): { config: ToolConfig; source: string } 
 export function validate(raw: unknown, source: string): ToolConfig {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ConfigError(`${source}: expected a JSON object`);
   const user = raw as Record<string, unknown>;
-  const known = ['base', 'skip', 'specs', 'thresholds', 'raiseAt', 'oxlint'];
-  const unknown = Object.keys(user).filter((k) => !known.includes(k));
+  const known = new Set(['base', 'skip', 'specs', 'thresholds', 'raiseAt', 'oxlint']);
+  const unknown = Object.keys(user).filter((k) => !known.has(k));
   if (unknown.length > 0) throw new ConfigError(`${source}: unknown key(s) ${unknown.join(', ')}`);
   const skip = stringList(user['skip'], 'skip', source) ?? DEFAULTS.skip;
   for (const s of skip) {
     try {
-      new RegExp(s);
+      RegExp(s);
     } catch (err) {
       throw new ConfigError(`${source}: skip pattern ${JSON.stringify(s)} is not a valid regex (${err instanceof Error ? err.message : String(err)})`);
     }

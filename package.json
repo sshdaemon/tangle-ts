@@ -11,6 +11,7 @@
     "node": ">=22.18"
   },
   "scripts": {
+    "lint": "oxlint --deny-warnings",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "tangle": "node bin/tangle.js"

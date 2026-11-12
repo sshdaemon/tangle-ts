@@ -12,7 +12,7 @@ export function parseDiff(text: string): ChangedFile[] {
       const path = headerPath(line.slice('diff --git '.length));
       files.push({ path, oldPath: path, added: false, skip: false, renamed: false, inHunks: false, ranges: [] });
     } else if (files.length > 0) {
-      readLine(files[files.length - 1]!, line);
+      readLine(files.at(-1)!, line);
     }
   }
   return files.flatMap((f) => changedFile(f) ?? []);
@@ -100,7 +100,7 @@ export function unquote(p: string): string {
     const next = body[i + 1] ?? '';
     const octal = /^[0-7]{3}/.exec(body.slice(i + 1));
     if (octal) {
-      bytes.push(parseInt(octal[0], 8));
+      bytes.push(Number.parseInt(octal[0], 8));
       i += 3;
     } else {
       bytes.push(ESCAPES[next] ?? next.charCodeAt(0));

@@ -2,9 +2,11 @@ import { createHash } from 'node:crypto';
 import { LineRange } from '../change/ranges.ts';
 import type { ChangedFile } from '../change/types.ts';
 import type { Finding } from '../report/types.ts';
-import { enclosing, hashText, MODULE, type FunctionSpan } from './functions.ts';
+import { enclosing, hashText, MODULE } from './functions.ts';
+import type { FunctionSpan } from './functions.ts';
 import type { Diagnostic } from './oxlint.ts';
-import { ruleById, type Rule, type Thresholds } from './rules.ts';
+import { ruleById } from './rules.ts';
+import type { Rule, Thresholds } from './rules.ts';
 
 /** One version of a file, linted and parsed. */
 export interface FileVersion {
@@ -171,7 +173,7 @@ function bugFindings(input: FileInput, opts: AnalyzeOptions): Finding[] {
   // Hits with the same rule, function and text are told apart by their order.
   const seen = new Map<string, number>();
   for (const hits of hitsOf(input.head, 'bug').values()) {
-    for (const { d, fn } of [...hits].sort((a, b) => a.d.pos - b.d.pos)) {
+    for (const { d, fn } of hits.toSorted((a, b) => a.d.pos - b.d.pos)) {
       const rule = ruleById(d.rule)!;
       const name = fn?.name ?? MODULE;
       const snippet = input.head.text.slice(input.head.lineStarts[d.line - 1] ?? 0, input.head.lineStarts[d.endLine] ?? input.head.text.length);
