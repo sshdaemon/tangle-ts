@@ -10,7 +10,7 @@ A local tool for reviewing changes with a person or an agent. Nothing is install
 2. Drops files that hold no logic (declarations, migrations, generated code, stories) by configurable patterns. Specs get the bug rules only.
 3. Lints the files as they are now and as they were at the merge base, with an oxlint config that turns on only the rules below.
 4. Maps every hit to its enclosing function (`Class.method`, `outer/inner`, `describe("x")/it("y")`).
-5. Reports a size finding when a function that overlaps the change is new, crossed a limit, or got worse; reports a bug finding when it hits a changed line.
+5. Reports a size finding when a function that overlaps the change is new, crossed a limit, or got worse; reports a bug or shape finding when it hits a changed line.
 6. Writes `report.md` and `report.json`.
 
 ## Rules
@@ -23,6 +23,12 @@ Size (one finding per function, only when worse than before):
 - `sonarjs/no-nested-conditional`: a ternary inside a ternary.
 
 Bug (every hit on a changed line): `no-identical-expressions`, `no-identical-conditions`, `no-all-duplicated-branches`, `no-duplicated-branches`, `no-gratuitous-expressions`, `no-inverted-boolean-check`, `no-identical-functions`, `no-invariant-returns`, `no-redundant-assignments`, `no-unused-collection`.
+
+Shape (every hit on a changed line, or on a line that makes the shape such as a condition reading the flag, `low`, category `design`; tangle finds these from the syntax itself, and only in public methods and exported functions for the first two):
+
+- `tangle/selector-parameter`: a boolean parameter, or a destructured option with a `true`/`false` default, that the body only branches on. Split the method instead. A boolean that is stored or passed on is fine.
+- `tangle/callback-in-options`: an optional callback mixed into an options object with other options. A required callback, as in an execute-around method, is fine. With an interface or type alias in the same file, adding the callback there counts as a change to the method.
+- `tangle/result-out-of-closure`: a `let` assigned inside a callback passed to an awaited call, to get a result out. Return it from the callback instead. Accumulators and event handlers are fine.
 
 ## Use
 

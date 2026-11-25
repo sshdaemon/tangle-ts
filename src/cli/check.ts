@@ -10,6 +10,7 @@ import { functionsOf, lineStartsOf } from '../check/functions.ts';
 import { defaultOxlintBin, oxlintConfig, runOxlint } from '../check/oxlint.ts';
 import type { Diagnostic } from '../check/oxlint.ts';
 import { RULES } from '../check/rules.ts';
+import { shapeDiagnostics } from '../check/shapes.ts';
 import { renderMarkdown } from '../report/render.ts';
 import type { Report } from '../report/types.ts';
 import { partition } from './accepted.ts';
@@ -89,8 +90,8 @@ export async function check(input: CheckInput): Promise<Report> {
           file: d.file,
           sizeRules: d.sizeRules,
           compared: base !== null && !baseBroken,
-          head: version(abs, headBy.get(abs) ?? []),
-          ...(baseAbs && !baseBroken ? { base: version(baseAbs, baseBy.get(baseAbs) ?? []) } : {}),
+          head: version(abs, headBy.get(abs) ?? [], d.sizeRules),
+          ...(baseAbs && !baseBroken ? { base: version(baseAbs, baseBy.get(baseAbs) ?? [], false) } : {}),
         },
       ];
     });
@@ -149,9 +150,10 @@ function writeTo(abs: string, text: string): void {
   writeFileSync(abs, text);
 }
 
-function version(abs: string, diagnostics: Diagnostic[]): FileVersion {
+/** Shape hits are read only at the head and only where size rules apply, so `shapes` is false otherwise. */
+function version(abs: string, diagnostics: Diagnostic[], shapes: boolean): FileVersion {
   const text = readFileSync(abs, 'utf8');
-  return { text, lineStarts: lineStartsOf(text), functions: functionsOf(abs, text), diagnostics };
+  return { text, lineStarts: lineStartsOf(text), functions: functionsOf(abs, text), diagnostics: shapes ? [...diagnostics, ...shapeDiagnostics(abs, text)] : diagnostics };
 }
 
 function byFile(diags: readonly Diagnostic[]): Map<string, Diagnostic[]> {

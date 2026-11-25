@@ -1,3 +1,5 @@
+import { CLOSURE_RESULT, OPTIONS_CALLBACK, SELECTOR_PARAMETER } from './shapes.ts';
+
 /** Thresholds for the size rules, from the tool config. */
 export interface Thresholds {
   /** Cognitive complexity above this is reported. */
@@ -11,15 +13,16 @@ export interface Thresholds {
 /**
  * `size` rules judge how hard a function is to follow: reported per function, and only when the change
  * made that function worse. `bug` rules flag code that is almost always a mistake: reported wherever
- * they hit a changed line.
+ * they hit a changed line. `shape` rules flag an awkward API shape, also wherever they hit a changed
+ * line; tangle finds them itself rather than through oxlint.
  */
-export type RuleKind = 'size' | 'bug';
+export type RuleKind = 'size' | 'bug' | 'shape';
 
 export interface Rule {
   /** oxlint rule id, also the name in reports. */
   readonly id: string;
   readonly kind: RuleKind;
-  readonly category: 'complexity' | 'correctness';
+  readonly category: 'complexity' | 'correctness' | 'design';
   /** Plain words for the claim in a finding. */
   readonly what: string;
   /** Options passed to oxlint. Scored rules run with a zero limit so every score is known. */
@@ -35,6 +38,7 @@ const firstNumber = (re: RegExp) => (message: string) => {
   return m?.[1] === undefined ? undefined : Number(m[1]);
 };
 
+/** Rules oxlint runs. */
 export const RULES: readonly Rule[] = [
   {
     id: 'sonarjs/cognitive-complexity',
@@ -74,6 +78,13 @@ export const RULES: readonly Rule[] = [
   { id: 'sonarjs/no-unused-collection', kind: 'bug', category: 'correctness', what: 'collection filled but never read' },
 ];
 
+/** Rules tangle checks itself, from the file's syntax. */
+export const SHAPE_RULES: readonly Rule[] = [
+  { id: SELECTOR_PARAMETER, kind: 'shape', category: 'design', what: 'boolean parameter that only picks a branch' },
+  { id: OPTIONS_CALLBACK, kind: 'shape', category: 'design', what: 'optional callback mixed into an options bag' },
+  { id: CLOSURE_RESULT, kind: 'shape', category: 'design', what: 'result carried out of a callback through an outer `let`' },
+];
+
 export function ruleById(id: string): Rule | undefined {
-  return RULES.find((r) => r.id === id);
+  return RULES.find((r) => r.id === id) ?? SHAPE_RULES.find((r) => r.id === id);
 }

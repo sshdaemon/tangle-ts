@@ -2,7 +2,7 @@
 export interface Finding {
   readonly id: string;
   readonly severity: 'low' | 'medium';
-  readonly category: 'complexity' | 'correctness';
+  readonly category: 'complexity' | 'correctness' | 'design';
   readonly where: string;
   readonly claim: string;
   readonly evidence: string;

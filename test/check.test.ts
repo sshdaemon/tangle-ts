@@ -11,7 +11,7 @@ import { DEFAULTS } from '../src/cli/config.ts';
 /** Nested branches: cognitive complexity 1 + 2 + 3 + 4 per block. */
 const tangled = (name: string, blocks: number) => {
   const body = Array.from({ length: blocks }, () => '  if (a) { if (b) { if (c) { if (d) { n++; } } } }').join('\n');
-  return `export function ${name}(a: boolean, b: boolean, c: boolean, d: boolean) {\n  let n = 0;\n${body}\n  return n;\n}\n`;
+  return `export function ${name}(a: number, b: number, c: number, d: number) {\n  let n = 0;\n${body}\n  return n;\n}\n`;
 };
 
 const BASE = {
@@ -109,7 +109,7 @@ test('finding ids stay the same when lines move', async () => {
 test('files mode: non-ASCII lines, unparsable files, repeated hits and uncompared claims', async () => {
   writeFileSync(
     path.join(repo, 'src/accents.ts'),
-    `export const s = '${'é'.repeat(31)}'; export const f = (a: boolean, b: boolean) => a ? (b ? 1 : 2) : 3;\n` +
+    `export const s = '${'é'.repeat(31)}'; export const f = (a: unknown, b: unknown) => a ? (b ? 1 : 2) : 3;\n` +
       `export function twice(a: { x: number }, b: { y: number }) {\n  return a.x === a.x && b.y === b.y;\n}\n`,
   );
   writeFileSync(path.join(repo, 'src/broken.ts'), 'export function x( {\n  return x === x;\n');
@@ -282,4 +282,50 @@ test('a module-level size id follows the whole file', async () => {
   const first = await id(text);
   assert.equal(await id(text.replace('\n', '\n\n')), first);
   assert.notEqual(await id(text.replace('=> a', '=> a + 1')), first);
+});
+
+test('shape findings are low design findings on changed lines, and spec files skip them by default', async () => {
+  const text = 'export class S {\n  old(id: string, a: boolean) {\n    return a ? id : null;\n  }\n  run(id: string, b: boolean) {\n    return b ? id : null;\n  }\n}\n';
+  const check1 = (file: string, specs: 'bugRules' | 'all') => {
+    writeFileSync(path.join(repo, file), text);
+    const list = { repo, base: 'main', head: 'working-tree', files: [{ path: file, status: 'modified' as const, ranges: [{ start: 5, end: 5 }] }] };
+    return check({ list, repoKey: 'fixture', config: { ...DEFAULTS, specs }, compare: false, out, command: 'test', version: '0', log: () => {} });
+  };
+  const report = await check1('src/shape.ts', 'bugRules');
+  assert.deepEqual(
+    report.findings.map((f) => [f.rule, f.function, f.severity, f.category, f.where]),
+    [['tangle/selector-parameter', 'S.run', 'low', 'design', 'src/shape.ts:5:19']],
+  );
+  assert.match(report.findings[0]!.id, /^tg-[0-9a-f]{10}$/);
+  assert.match(report.findings[0]!.claim, /Boolean parameter that only picks a branch in `S.run`/);
+  assert.deepEqual((await check1('src/shape.spec.ts', 'bugRules')).findings, []);
+  assert.equal((await check1('src/shape.spec.ts', 'all')).findings.length, 1);
+});
+
+test('a callback added to a same-file options interface is reported though the method line is unchanged', async () => {
+  const text = 'interface O {\n  label: string;\n  onDone?: () => void;\n}\nexport class S {\n  run(o: O) {\n    return o.label;\n  }\n}\n';
+  const at = async (start: number) => {
+    writeFileSync(path.join(repo, 'src/options.ts'), text);
+    const list = { repo, base: 'main', head: 'working-tree', files: [{ path: 'src/options.ts', status: 'modified' as const, ranges: [{ start, end: start }] }] };
+    const report = await check({ list, repoKey: 'fixture', config: DEFAULTS, compare: false, out, command: 'test', version: '0', log: () => {} });
+    return report.findings.map((f) => [f.rule, f.where, f.id]);
+  };
+  const viaMember = await at(3);
+  assert.deepEqual(viaMember.map(([rule, where]) => [rule, where]), [['tangle/callback-in-options', 'src/options.ts:6:10']]);
+  assert.deepEqual(await at(6), viaMember);
+  assert.deepEqual(await at(2), []);
+});
+
+test('a body that starts branching on a flag, or an await added before a call, counts as changing the shape', async () => {
+  const at = async (text: string, line: number) => {
+    writeFileSync(path.join(repo, 'src/reshaped.ts'), text);
+    const list = { repo, base: 'main', head: 'working-tree', files: [{ path: 'src/reshaped.ts', status: 'modified' as const, ranges: [{ start: line, end: line }] }] };
+    const report = await check({ list, repoKey: 'fixture', config: DEFAULTS, compare: false, out, command: 'test', version: '0', log: () => {} });
+    return report.findings.map((f) => `${f.rule} ${f.where}`);
+  };
+  const selector = 'export class S {\n  run(id: string, active: boolean) {\n    return active ? id : null;\n  }\n}\n';
+  assert.deepEqual(await at(selector, 3), ['tangle/selector-parameter src/reshaped.ts:2:19']);
+  const closure = 'export async function f(upload: () => Promise<boolean>) {\n  let uploaded = false;\n  await withRetry(async () => {\n    uploaded = await upload();\n  });\n  return uploaded;\n}\ndeclare function withRetry(run: () => Promise<void>): Promise<void>;\n';
+  const hit = ['tangle/result-out-of-closure src/reshaped.ts:4:5'];
+  assert.deepEqual([await at(closure, 2), await at(closure, 3), await at(closure, 6)], [hit, hit, []]);
 });

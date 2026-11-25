@@ -84,7 +84,7 @@ export function hashText(text: string): string {
   return createHash('sha256').update(text.replaceAll(/\s+/g, ' ').trim()).digest('hex').slice(0, 12);
 }
 
-type FunctionLike = ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration | ts.AccessorDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+export type FunctionLike = ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration | ts.AccessorDeclaration | ts.ArrowFunction | ts.FunctionExpression;
 
 const FUNCTION_KINDS: ReadonlySet<ts.SyntaxKind> = new Set([
   ts.SyntaxKind.FunctionDeclaration,
@@ -96,7 +96,7 @@ const FUNCTION_KINDS: ReadonlySet<ts.SyntaxKind> = new Set([
   ts.SyntaxKind.FunctionExpression,
 ]);
 
-function isFunctionLike(node: ts.Node): node is FunctionLike {
+export function isFunctionLike(node: ts.Node): node is FunctionLike {
   return FUNCTION_KINDS.has(node.kind);
 }
 

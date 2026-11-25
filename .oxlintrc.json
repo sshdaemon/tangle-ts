@@ -16,7 +16,8 @@
     "perf": "error"
   },
   "ignorePatterns": [
-    "node_modules"
+    "node_modules",
+    "test/fixtures"
   ],
   "rules": {
     "curly": [

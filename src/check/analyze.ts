@@ -41,7 +41,11 @@ interface Hit {
 }
 
 export function analyze(inputs: readonly FileInput[], opts: AnalyzeOptions): Finding[] {
-  return inputs.flatMap((input) => [...(input.sizeRules ? sizeFindings(input, opts) : []), ...bugFindings(input, opts)]);
+  return inputs.flatMap((input) => [
+    ...(input.sizeRules ? sizeFindings(input, opts) : []),
+    ...lineFindings(input, 'bug', opts),
+    ...(input.sizeRules ? lineFindings(input, 'shape', opts) : []),
+  ]);
 }
 
 function hitsOf(v: FileVersion, kind: Rule['kind']): Map<string, Hit[]> {
@@ -168,12 +172,12 @@ function wasText(g: SizeGroup, changed: string): string {
   return changed;
 }
 
-/** Bug rules: every hit on a changed line. */
-function bugFindings(input: FileInput, opts: AnalyzeOptions): Finding[] {
+/** Bug and shape rules: every hit on a changed line. Bug hits are medium, shape hits low. */
+function lineFindings(input: FileInput, kind: 'bug' | 'shape', opts: AnalyzeOptions): Finding[] {
   const out: Finding[] = [];
   // Hits with the same rule, function and text are told apart by their order.
   const seen = new Map<string, number>();
-  for (const hits of hitsOf(input.head, 'bug').values()) {
+  for (const hits of hitsOf(input.head, kind).values()) {
     for (const { d, fn } of hits.toSorted((a, b) => a.d.pos - b.d.pos)) {
       const rule = ruleById(d.rule)!;
       const name = fn?.name ?? MODULE;
@@ -182,10 +186,11 @@ function bugFindings(input: FileInput, opts: AnalyzeOptions): Finding[] {
       const k = `${rule.id}\u0000${name}\u0000${textHash}`;
       const n = (seen.get(k) ?? 0) + 1;
       seen.set(k, n);
-      if (!LineRange.touches(input.file.ranges, { start: d.line, end: d.endLine })) continue;
+      const spans = [{ start: d.line, end: d.endLine }, ...(d.alsoLines ?? [])];
+      if (!spans.some((r) => LineRange.touches(input.file.ranges, r))) continue;
       out.push({
         id: idOf(opts.repoKey, input.file.path, rule.id, name, n === 1 ? textHash : `${textHash}#${n}`),
-        severity: 'medium',
+        severity: kind === 'bug' ? 'medium' : 'low',
         category: rule.category,
         rule: rule.id,
         function: name,

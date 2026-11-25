@@ -18,6 +18,8 @@ export interface Diagnostic {
   readonly pos: number;
   readonly endLine: number;
   readonly message: string;
+  /** More lines that count as the hit for the changed-lines check, such as a callback in a named options type. */
+  readonly alsoLines?: readonly { readonly start: number; readonly end: number }[];
 }
 
 export class OxlintError extends Error {
