@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 45
     env:
       BASE: origin/${{ github.base_ref }}
-      WEAKSPOT_REF: 52e9c8976028826721cbb1ca654db39f9594903f
+      WEAKSPOT_REF: e50c51a28fc2aa9e4b8c9ba61dad27bd0177b02f
     steps:
       - uses: actions/checkout@v7
         with:
