@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 45
     env:
       BASE: origin/${{ github.base_ref }}
-      WEAKSPOT_REF: 81e108112bb5b7d4903d5208608304244a4b2c86
+      WEAKSPOT_REF: 377a707830216d9d3eb453da27beb0921911edab
     steps:
       - uses: actions/checkout@v7
         with:
@@ -57,7 +57,8 @@ jobs:
           git -C "$RUNNER_TEMP/weakspot-ts" checkout --quiet "$WEAKSPOT_REF"
           npm ci --prefix "$RUNNER_TEMP/weakspot-ts" --ignore-scripts --no-audit --no-fund
       - name: weakspot
-        run: node "$RUNNER_TEMP/weakspot-ts/bin/weakspot.js" diff --repo . --base "$BASE" --committed --depth 2 --out "$RUNNER_TEMP/weakspot"
+        # Exit 1 means the run finished with findings; any other non-zero code fails the step as is.
+        run: node "$RUNNER_TEMP/weakspot-ts/bin/weakspot.js" diff --repo . --base "$BASE" --committed --depth 2 --out "$RUNNER_TEMP/weakspot" || { s=$?; [ "$s" -eq 1 ] || exit "$s"; }
       - name: Summary
         if: always()
         run: |
