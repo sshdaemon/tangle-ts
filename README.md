@@ -52,13 +52,14 @@ The `--changes` file is shared with weakspot-ts: the same JSON, read by both too
   "base": "origin/develop",
   "head": "working-tree",
   "files": [
-    { "path": "src/x.service.ts", "status": "modified", "ranges": [[12, 40], [88, 91]] },
-    { "path": "src/y.ts", "status": "renamed", "oldPath": "src/old-y.ts", "ranges": "whole" }
+    { "path": "src/x.service.ts", "status": "modified", "ranges": [[12, 40], [88, 91]], "removedLines": true },
+    { "path": "src/y.ts", "status": "renamed", "oldPath": "src/old-y.ts", "ranges": "whole", "removedLines": false },
+    { "path": "src/x.spec.ts", "status": "modified", "ranges": [], "removedLines": true }
   ]
 }
 ```
 
-`head` says where files and ranges come from: a commit (files are read from that commit through git), or `"working-tree"` (files on disk, uncommitted work included; the merge base is taken from HEAD). `tangle changes` writes `"working-tree"`, or the commit with `--committed` or `--head <commit>`. `ranges` are inclusive lines of those files, or `"whole"`. The before version is read at `merge-base(base, head)`.
+`head` says where files and ranges come from: a commit (files are read from that commit through git), or `"working-tree"` (files on disk, uncommitted work included; the merge base is taken from HEAD). `tangle changes` writes `"working-tree"`, or the commit with `--committed` or `--head <commit>`. `ranges` are inclusive lines of those files, or `"whole"`. `removedLines` says whether the diff removed any line of the file: a file whose change only removes lines (a deleted test) is listed with `"ranges": []`, which tangle skips and weakspot-ts counts as a changed spec. Lists without `removedLines` stay valid. The before version is read at `merge-base(base, head)`.
 
 ## Configure
 

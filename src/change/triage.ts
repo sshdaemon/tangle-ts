@@ -14,6 +14,7 @@ export function triage(files: readonly ChangedFile[], skip: readonly string[], s
     if (!/\.(ts|tsx|mts|cts)$/.test(file.path)) return { file, kept: false, sizeRules: false, reason: 'not a TypeScript file' };
     const hit = patterns.find((p) => p.test(file.path));
     if (hit) return { file, kept: false, sizeRules: false, reason: `matches skip pattern ${hit.source}` };
+    if (file.ranges !== 'whole' && file.ranges.length === 0) return { file, kept: false, sizeRules: false, reason: 'no added or changed lines' };
     if (SPEC_PATTERN.test(file.path)) {
       if (specs === 'skip') return { file, kept: false, sizeRules: false, reason: 'spec file (specs: skip)' };
       return { file, kept: true, sizeRules: specs === 'all', reason: '' };

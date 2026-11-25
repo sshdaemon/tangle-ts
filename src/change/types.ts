@@ -14,6 +14,11 @@ export interface ChangedFile {
   /** The path at `base`, for a renamed file. */
   readonly oldPath?: string;
   readonly ranges: readonly LineRange[] | 'whole';
+  /**
+   * Whether the diff removed any line of the file. A modified file that only lost lines is listed with
+   * no ranges, so a reader that cares about removed lines (weakspot-ts) sees it. Absent in older lists.
+   */
+  readonly removedLines?: boolean;
 }
 
 /** `head` value meaning the files as they are on disk, uncommitted work included. */

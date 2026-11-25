@@ -58,12 +58,13 @@ diff --git a/img.png b/img.png
 Binary files a/img.png and b/img.png differ
 `;
 
-test('parseDiff keeps added and modified lines of the new file, drops deletions and binaries', () => {
+test('parseDiff keeps added and modified lines of the new file, says whether lines were removed, and lists a file that only lost lines', () => {
   assert.deepEqual(parseDiff(DIFF), [
-    { path: 'src/a.ts', status: 'modified', ranges: [{ start: 4, end: 5 }, { start: 12, end: 12 }] },
-    { path: 'src/new.ts', status: 'added', ranges: 'whole' },
-    { path: 'src/after.ts', status: 'renamed', oldPath: 'src/before.ts', ranges: [{ start: 5, end: 5 }] },
-    { path: 'src/moved-too.ts', status: 'renamed', oldPath: 'src/moved.ts', ranges: [] },
+    { path: 'src/a.ts', status: 'modified', ranges: [{ start: 4, end: 5 }, { start: 12, end: 12 }], removedLines: true },
+    { path: 'src/new.ts', status: 'added', ranges: 'whole', removedLines: false },
+    { path: 'src/after.ts', status: 'renamed', oldPath: 'src/before.ts', ranges: [{ start: 5, end: 5 }], removedLines: true },
+    { path: 'src/moved-too.ts', status: 'renamed', oldPath: 'src/moved.ts', ranges: [], removedLines: false },
+    { path: 'src/only-deletes.ts', status: 'modified', ranges: [], removedLines: true },
   ]);
 });
 
@@ -135,18 +136,18 @@ test('parseDiff reads C-quoted paths and keeps a quoted file from leaking into t
     '',
   ].join('\n');
   assert.deepEqual(parseDiff(diff), [
-    { path: 'src/a.ts', status: 'modified', ranges: [{ start: 1, end: 1 }] },
-    { path: 'src/my file.ts', status: 'added', ranges: 'whole' },
-    { path: 'src/q"uote.ts', status: 'modified', ranges: [{ start: 3, end: 3 }] },
+    { path: 'src/a.ts', status: 'modified', ranges: [{ start: 1, end: 1 }], removedLines: true },
+    { path: 'src/my file.ts', status: 'added', ranges: 'whole', removedLines: false },
+    { path: 'src/q"uote.ts', status: 'modified', ranges: [{ start: 3, end: 3 }], removedLines: false },
   ]);
   assert.equal(unquote(String.raw`"caf\303\251\t.ts"`), 'café\t.ts');
 });
 
 test('parseDiff names an empty added file from its header, quoted or with spaces', () => {
   const header = (h: string) => parseDiff(`diff --git ${h}\nnew file mode 100644\nindex 0000000..e69de29\n`);
-  assert.deepEqual(header('a/src/my file.ts b/src/my file.ts'), [{ path: 'src/my file.ts', status: 'added', ranges: 'whole' }]);
-  assert.deepEqual(header(String.raw`"a/src/caf\303\251.ts" "b/src/caf\303\251.ts"`), [{ path: 'src/café.ts', status: 'added', ranges: 'whole' }]);
-  assert.deepEqual(header(String.raw`"a/src/q\"x.ts" "b/src/q\"x.ts"`), [{ path: 'src/q"x.ts', status: 'added', ranges: 'whole' }]);
+  assert.deepEqual(header('a/src/my file.ts b/src/my file.ts'), [{ path: 'src/my file.ts', status: 'added', ranges: 'whole', removedLines: false }]);
+  assert.deepEqual(header(String.raw`"a/src/caf\303\251.ts" "b/src/caf\303\251.ts"`), [{ path: 'src/café.ts', status: 'added', ranges: 'whole', removedLines: false }]);
+  assert.deepEqual(header(String.raw`"a/src/q\"x.ts" "b/src/q\"x.ts"`), [{ path: 'src/q"x.ts', status: 'added', ranges: 'whole', removedLines: false }]);
 });
 
 test('unquote leaves unquoted text alone and decodes every escape', () => {

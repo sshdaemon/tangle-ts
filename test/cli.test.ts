@@ -62,7 +62,7 @@ test('usage errors exit 2 with a message', () => {
 test('changes prints or writes the list; diff and files check it', () => {
   const printed = JSON.parse(tangle('changes', '--base', 'main', '--committed').out);
   assert.equal(printed.base, 'main');
-  assert.deepEqual(printed.files, [{ path: 'a.ts', status: 'modified', ranges: [[1, 1]] }]);
+  assert.deepEqual(printed.files, [{ path: 'a.ts', status: 'modified', ranges: [[1, 1]], removedLines: true }]);
   assert.equal(tangle('changes', '--base', 'main', '--out', 'list.json').code, 0);
   assert.equal(JSON.parse(readFileSync(path.join(repo, 'list.json'), 'utf8')).head, 'working-tree');
 
@@ -107,7 +107,7 @@ test('--head checks a commit whatever is checked out', () => {
   writeFileSync(path.join(repo, 'stray.ts'), 'export const s = (z: { id: number }) => z.id === z.id;\n');
   try {
     const list = JSON.parse(tangle('changes', ...asSquash).out);
-    assert.deepEqual([list.base, list.head, list.files], [`${sha}^`, sha, [{ path: 'a.ts', status: 'modified', ranges: [[1, 1]] }]]);
+    assert.deepEqual([list.base, list.head, list.files], [`${sha}^`, sha, [{ path: 'a.ts', status: 'modified', ranges: [[1, 1]], removedLines: true }]]);
     assert.equal(tangle('diff', ...asSquash, '--quiet', '--out', 'out/h').code, 0);
     const report = JSON.parse(readFileSync(path.join(repo, 'out/h/report.json'), 'utf8'));
     assert.deepEqual(report.checked, ['a.ts']);

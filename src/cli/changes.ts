@@ -16,7 +16,7 @@ export function changeListFromGit(root: string, base: string, committedOnly: boo
   const files = parseDiff(git(root, ['-c', 'core.quotePath=false', ...(committed ? [...args, head] : args)]));
   if (!committed) {
     const known = new Set(files.map((f) => f.path));
-    for (const p of untrackedFiles(root)) if (!known.has(p)) files.push({ path: p, status: 'added', ranges: 'whole' });
+    for (const p of untrackedFiles(root)) if (!known.has(p)) files.push({ path: p, status: 'added', ranges: 'whole', removedLines: false });
   }
   return { repo: root, base, head: committed ? head : WORKING_TREE, files };
 }

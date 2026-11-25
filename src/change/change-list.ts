@@ -43,11 +43,16 @@ export function parseChangeList(raw: unknown, source: string): ChangeList {
         }),
       );
     } else return fail(`files[${i}].ranges must be an array of [start, end] or "whole"`);
-    const path = e['path'] as string;
-    if (status === 'renamed') return { path, status, oldPath: e['oldPath'] as string, ranges: parsed };
-    return { path, status: status as ChangedFile['status'], ranges: parsed };
+    const removedLines = e['removedLines'];
+    if (removedLines !== undefined && typeof removedLines !== 'boolean') fail(`files[${i}].removedLines must be true or false`);
+    return entry(e['path'] as string, status as ChangedFile['status'], e['oldPath'] as string | undefined, parsed, removedLines as boolean | undefined);
   });
   return { repo: o['repo'] as string, base: o['base'] as string, head: o['head'] as string, files };
+}
+
+function entry(path: string, status: ChangedFile['status'], oldPath: string | undefined, ranges: ChangedFile['ranges'], removedLines: boolean | undefined): ChangedFile {
+  const file: ChangedFile = status === 'renamed' ? { path, status, oldPath: oldPath!, ranges } : { path, status, ranges };
+  return removedLines === undefined ? file : { ...file, removedLines };
 }
 
 export function serializeChangeList(list: ChangeList): string {

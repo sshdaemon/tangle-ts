@@ -3,14 +3,15 @@ import type { ChangedFile, LineRange as Range } from './types.ts';
 
 /**
  * Reads `git diff -U0 -M` output into changed files with the added or modified line ranges of the
- * new file. Deleted files, pure deletions and binary files are left out.
+ * new file, and whether any line was removed. Deleted and binary files are left out; a file that
+ * only lost lines is listed with no ranges.
  */
 export function parseDiff(text: string): ChangedFile[] {
   const files: FileDiff[] = [];
   for (const line of text.split('\n')) {
     if (line.startsWith('diff --git ')) {
       const path = headerPath(line.slice('diff --git '.length));
-      files.push({ path, oldPath: path, added: false, skip: false, renamed: false, inHunks: false, ranges: [] });
+      files.push({ path, oldPath: path, added: false, skip: false, renamed: false, inHunks: false, ranges: [], removedLines: false });
     } else if (files.length > 0) {
       readLine(files.at(-1)!, line);
     }
@@ -27,16 +28,19 @@ interface FileDiff {
   renamed: boolean;
   inHunks: boolean;
   ranges: Range[];
+  removedLines: boolean;
 }
 
-const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+const HUNK = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 function readLine(f: FileDiff, line: string): void {
   const hunk = HUNK.exec(line);
   if (hunk) {
     f.inHunks = true;
-    const start = Number(hunk[1]);
-    const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
+    // A missing count means one line, on either side.
+    if (hunk[1] === undefined || Number(hunk[1]) > 0) f.removedLines = true;
+    const start = Number(hunk[2]);
+    const count = hunk[3] === undefined ? 1 : Number(hunk[3]);
     if (count > 0) f.ranges.push(LineRange.of(start, start + count - 1));
     return;
   }
@@ -56,10 +60,11 @@ function readHeaderLine(f: FileDiff, line: string): void {
 
 function changedFile(f: FileDiff): ChangedFile | undefined {
   if (f.skip) return undefined;
-  if (f.added) return { path: f.path, status: 'added', ranges: 'whole' };
-  if (f.renamed) return { path: f.path, status: 'renamed', oldPath: f.oldPath, ranges: LineRange.merge(f.ranges) };
-  if (f.ranges.length === 0) return undefined;
-  return { path: f.path, status: 'modified', ranges: LineRange.merge(f.ranges) };
+  if (f.added) return { path: f.path, status: 'added', ranges: 'whole', removedLines: false };
+  if (f.renamed) return { path: f.path, status: 'renamed', oldPath: f.oldPath, ranges: LineRange.merge(f.ranges), removedLines: f.removedLines };
+  // A file that only lost lines has nothing to check here, but a deleted test matters to weakspot-ts.
+  if (f.ranges.length === 0 && !f.removedLines) return undefined;
+  return { path: f.path, status: 'modified', ranges: LineRange.merge(f.ranges), removedLines: f.removedLines };
 }
 
 /**
