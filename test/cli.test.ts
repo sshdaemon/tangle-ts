@@ -39,12 +39,15 @@ test('usage errors exit 2 with a message', () => {
   assert.match(tangle('diff', 'a.ts').err, /^diff takes no paths/);
   assert.match(tangle('files').err, /^files: give at least one path/);
   assert.match(tangle('files', '--changes', 'x.json', 'a.ts').err, /^--changes works with diff only/);
-  assert.match(tangle('diff', '--changes', 'x.json', '--base', 'main').err, /^--changes already names the base/);
+  assert.match(tangle('diff', '--changes', 'x.json', '--base', 'main').err, /^--changes already names the base and head/);
   assert.match(tangle('diff', '--changes', 'missing.json').err, /--changes: .*missing\.json does not exist/);
   assert.match(tangle('files', '../elsewhere.ts').err, /is outside the repo/);
   assert.match(tangle('files', 'gone.ts').err, /^gone\.ts does not exist/);
   assert.deepEqual([tangle('diff', '--bogus').code, /Unknown option '--bogus'/.test(tangle('diff', '--bogus').err)], [2, true]);
   assert.deepEqual([tangle('diff', '--base').code, /--base/.test(tangle('diff', '--base').err)], [2, true]);
+  assert.deepEqual([tangle('diff', '--head', 'HEAD', '--committed').code, /--head and --committed conflict/.test(tangle('diff', '--head', 'HEAD', '--committed').err)], [2, true]);
+  assert.match(tangle('files', 'a.ts', '--head', 'HEAD').err, /^--head works with diff and changes only/);
+  assert.match(tangle('diff', '--changes', 'x.json', '--head', 'HEAD').err, /^--changes already names the base and head/);
   assert.deepEqual([tangle('files', 'a.ts:40-10').code, tangle('files', 'a.ts:40-10').err], [2, 'a.ts:40-10: invalid line range 40-10\n']);
 });
 
@@ -85,3 +88,36 @@ test('a run without --out leaves the checked repo as it was', () => {
     rmSync(outside, { recursive: true, force: true });
   }
 });
+
+test('--head checks a commit whatever is checked out', () => {
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim();
+  const sha = git('rev-parse', 'feature');
+  const asSquash = ['--base', `${sha}^`, '--head', sha];
+  git('checkout', '-q', 'main');
+  // The disk has no bug in a.ts and an untracked file with one: only the commit's a.ts may be checked.
+  writeFileSync(path.join(repo, 'a.ts'), 'export const a = 2;\n');
+  writeFileSync(path.join(repo, 'stray.ts'), 'export const s = (z: { id: number }) => z.id === z.id;\n');
+  try {
+    const list = JSON.parse(tangle('changes', ...asSquash).out);
+    assert.deepEqual([list.base, list.head, list.files], [`${sha}^`, sha, [{ path: 'a.ts', status: 'modified', ranges: [[1, 1]] }]]);
+    assert.equal(tangle('diff', ...asSquash, '--quiet', '--out', 'out/h').code, 0);
+    const report = JSON.parse(readFileSync(path.join(repo, 'out/h/report.json'), 'utf8'));
+    assert.deepEqual(report.checked, ['a.ts']);
+    assert.deepEqual(report.findings.map((f: { rule: string; where: string }) => [f.rule, f.where]), [['sonarjs/no-identical-expressions', 'a.ts:1:41']]);
+    assert.equal(report.base.commit, git('rev-parse', `${sha}^`));
+  } finally {
+    rmSync(path.join(repo, 'stray.ts'), { force: true });
+    git('checkout', '-q', '--', 'a.ts');
+    git('checkout', '-q', 'feature');
+  }
+  const merged = tangle('changes', '--base', 'feature', '--head', sha);
+  assert.deepEqual([merged.code, JSON.parse(merged.out).files], [0, []]);
+  assert.equal(merged.err, `warning: ${sha.slice(0, 12)} is already in feature, so there is nothing to check; for a merged commit use --base <sha>^ --head <sha>\n`);
+  assert.equal(tangle('changes', '--base', 'feature', '--head', sha, '--quiet').err, '');
+  assert.equal(tangle('changes', '--base', 'main', '--head', sha).err, '');
+  tangle('diff', '--base', 'feature', '--head', sha, '--quiet', '--out', 'out/e');
+  assert.deepEqual(JSON.parse(readFileSync(path.join(repo, 'out/e/report.json'), 'utf8')).warnings, [merged.err.slice('warning: '.length, -1)]);
+  const missing = tangle('changes', '--head', 'no-such-commit');
+  assert.deepEqual([missing.code, /Needed a single revision/.test(missing.err)], [1, true]);
+});
+

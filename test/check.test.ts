@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFile
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, test } from 'vitest';
-import { changeListFromGit } from '../src/cli/changes.ts';
+import { alreadyInBase, changeListFromGit } from '../src/cli/changes.ts';
 import { check } from '../src/cli/check.ts';
 import { DEFAULTS } from '../src/cli/config.ts';
 
@@ -226,3 +226,27 @@ test('size ids follow the function text, bug ids the flagged line', async () => 
   assert.equal(otherLine.bug, first.bug);
   assert.notEqual(flaggedLine.bug, otherLine.bug);
 });
+
+test('a head commit the base already contains is warned about, only when comparing', async () => {
+  const sha = sh(repo, ['rev-parse', 'feature']).trim();
+  const inBase = { repo, base: 'feature', head: sha, files: [] };
+  const expected = `${sha.slice(0, 12)} is already in feature, so there is nothing to check; for a merged commit use --base <sha>^ --head <sha>`;
+  assert.equal(alreadyInBase(repo, inBase), expected);
+  assert.equal(alreadyInBase(repo, { ...inBase, base: 'main' }), undefined);
+  assert.equal(alreadyInBase(repo, { ...inBase, head: 'working-tree' }), undefined);
+  const run = (list: typeof inBase, compare: boolean) =>
+    check({ list, repoKey: 'fixture', config: DEFAULTS, compare, out, command: 'test', version: '0', log: () => {} });
+  assert.deepEqual((await run(inBase, true)).warnings, [expected]);
+  assert.deepEqual((await run(inBase, false)).warnings, []);
+  assert.deepEqual((await run({ ...inBase, base: 'main' }, true)).warnings, []);
+});
+
+test('a committed or given-commit change list leaves out uncommitted and untracked work', () => {
+  const sha = sh(repo, ['rev-parse', 'feature']).trim();
+  const paths = (list: { files: readonly { path: string }[] }) => list.files.map((f) => f.path);
+  assert.ok(paths(changeListFromGit(repo, 'main', false)).includes('src/fresh.ts'));
+  assert.ok(!paths(changeListFromGit(repo, 'main', true)).includes('src/fresh.ts'));
+  const given = changeListFromGit(repo, 'main', false, sha);
+  assert.deepEqual([given.head, paths(given).includes('src/fresh.ts')], [sha, false]);
+});
+

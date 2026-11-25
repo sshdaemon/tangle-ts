@@ -13,6 +13,7 @@ import { RULES } from '../check/rules.ts';
 import { renderMarkdown } from '../report/render.ts';
 import type { Report } from '../report/types.ts';
 import type { ToolConfig } from './config.ts';
+import { alreadyInBase } from './changes.ts';
 import { git, mergeBase, showFile } from './git.ts';
 
 export interface CheckInput {
@@ -42,6 +43,8 @@ export async function check(input: CheckInput): Promise<Report> {
   const onDisk = list.head === WORKING_TREE;
   const headCommit = onDisk ? undefined : git(root, ['rev-parse', '--verify', `${list.head}^{commit}`]).trim();
   const base: Report['base'] = input.compare ? { ref: list.base, commit: mergeBase(root, list.base, headCommit ?? 'HEAD') } : null;
+  const emptyChange = headCommit && base?.commit === headCommit ? alreadyInBase(root, list) : undefined;
+  if (emptyChange) warnings.push(emptyChange);
 
   // Real path, so the file names oxlint reports match the ones we pass.
   const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'tangle-')));

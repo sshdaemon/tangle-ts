@@ -61,3 +61,17 @@ Ranges in a file SHALL be sorted, and ranges that overlap or touch SHALL be join
 
 - **WHEN** a file has ranges `[5, 9]`, `[1, 3]` and `[4, 4]`
 - **THEN** its ranges become `[1, 9]`
+
+### Requirement: Change list of a given commit
+
+With `--head <commit>`, `tangle changes` and `tangle diff` SHALL build the change list from the diff between `merge-base(base, commit)` and that commit, with `head` set to the commit, and SHALL read files from the commit instead of the disk.
+
+#### Scenario: Squash commit
+
+- **WHEN** `tangle diff --base <sha>^ --head <sha>` runs on a squash commit
+- **THEN** it checks exactly the lines that commit added or changed
+
+#### Scenario: Other branch checked out
+
+- **WHEN** the checkout is on a different branch with uncommitted work
+- **THEN** the result is the same as on a clean checkout of the commit

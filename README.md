@@ -30,12 +30,13 @@ Bug (every hit on a changed line): `no-identical-expressions`, `no-identical-con
 npm install
 node bin/tangle.js diff                         # this checkout against the base, including uncommitted work
 node bin/tangle.js diff --base origin/main --committed
+node bin/tangle.js diff --base <sha>^ --head <sha>   # a squash-merged commit, whatever is checked out
 node bin/tangle.js changes --out changes.json   # write the change list
 node bin/tangle.js diff --changes changes.json  # check exactly the files and lines in a list
 node bin/tangle.js files src/a.ts:10-40 src/b.ts [--base origin/develop]
 ```
 
-Options: `--repo`, `--base`, `--changes`, `--committed`, `--out`, `--quiet`. `node bin/tangle.js --help` lists them. `files` without `--base` reports every hit in range instead of comparing.
+Options: `--repo`, `--base`, `--changes`, `--committed`, `--head`, `--out`, `--quiet`. `node bin/tangle.js --help` lists them. `files` without `--base` reports every hit in range instead of comparing.
 
 Needs Node 22.18 or later (the CLI runs the TypeScript sources directly) and `git`.
 
@@ -55,7 +56,7 @@ The `--changes` file is shared with weakspot-ts: the same JSON, read by both too
 }
 ```
 
-`head` says where files and ranges come from: a commit (files are read from that commit through git), or `"working-tree"` (files on disk, uncommitted work included; the merge base is taken from HEAD). `tangle changes` writes `"working-tree"`, or the commit with `--committed`. `ranges` are inclusive lines of those files, or `"whole"`. The before version is read at `merge-base(base, head)`.
+`head` says where files and ranges come from: a commit (files are read from that commit through git), or `"working-tree"` (files on disk, uncommitted work included; the merge base is taken from HEAD). `tangle changes` writes `"working-tree"`, or the commit with `--committed` or `--head <commit>`. `ranges` are inclusive lines of those files, or `"whole"`. The before version is read at `merge-base(base, head)`.
 
 ## Configure
 
@@ -72,6 +73,7 @@ Per-project settings live outside the project, in `~/.tangle/repos/<repo>.json`,
 - sonarjs rules that need type information do not run under oxlint, and neither do rules built on ESLint's code path analysis (`no-dead-store`). They are left out.
 - Functions are matched between versions by name; a rename makes the function look new.
 - Unnamed callbacks are numbered in order (`<map callback>`, `<map callback>#2`). Adding one before others shifts the numbers, so an edited callback can be compared with a different one from the base.
+- `--base <sha>^` names the first parent, so on a merge commit `--head <sha>` checks everything the merge brought in.
 - A file that does not parse is skipped with a warning; when only its before version does not parse, it is reported without comparing.
 
 ## Develop

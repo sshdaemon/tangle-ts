@@ -8,7 +8,7 @@ import { WORKING_TREE } from '../change/types.ts';
 import type { ChangeList } from '../change/types.ts';
 import { OxlintError } from '../check/oxlint.ts';
 import type { Report } from '../report/types.ts';
-import { changeListFromGit } from './changes.ts';
+import { alreadyInBase, changeListFromGit } from './changes.ts';
 import { check } from './check.ts';
 import { ConfigError, loadConfig, tangleHome } from './config.ts';
 import { GitError, repoKey, repoRoot } from './git.ts';
@@ -26,6 +26,8 @@ Options
   --base <ref>        ref to compare with (default from config, origin/develop)
   --changes <file>    a change list file, instead of reading the diff (diff only)
   --committed         leave out uncommitted and untracked work (diff and changes)
+  --head <commit>     check that commit's change instead of the checkout (diff and changes);
+                      a squash commit is --base <sha>^ --head <sha>
   --out <path>        report dir (default ~/.tangle/runs/<repo>/<time>); for changes, a file to write
   --quiet             only print the final summary
 `;
@@ -62,6 +64,7 @@ interface Options {
   readonly base?: string | undefined;
   readonly changes?: string | undefined;
   readonly committed?: boolean | undefined;
+  readonly head?: string | undefined;
   readonly out?: string | undefined;
   readonly quiet?: boolean | undefined;
   readonly help?: boolean | undefined;
@@ -72,6 +75,7 @@ const OPTIONS = {
   base: { type: 'string' },
   changes: { type: 'string' },
   committed: { type: 'boolean' },
+  head: { type: 'string' },
   out: { type: 'string' },
   quiet: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
@@ -96,7 +100,10 @@ async function run(argv: string[]): Promise<number> {
   const { config, source } = loadConfig(key);
   const base = values.base ?? config.base;
   if (command === 'changes') {
-    writeChanges(changeListFromGit(root, base, values.committed ?? false), values.out);
+    const list = changeListFromGit(root, base, values.committed ?? false, values.head);
+    const empty = alreadyInBase(root, list);
+    if (empty && !values.quiet) process.stderr.write(`warning: ${empty}\n`);
+    writeChanges(list, values.out);
     return 0;
   }
   const { list, compare } = fromList ? { list: fromList, compare: true } : listFor(command, rest, root, base, values);
@@ -123,7 +130,9 @@ function checkUsage(command: string, rest: readonly string[], values: Options): 
   if (command !== 'files' && rest.length > 0) throw new UsageError(`${command} takes no paths`);
   if (command === 'files' && rest.length === 0) throw new UsageError('files: give at least one path');
   if (values.changes && command !== 'diff') throw new UsageError('--changes works with diff only');
-  if (values.changes && (values.base || values.committed)) throw new UsageError('--changes already names the base; drop --base and --committed');
+  if (values.changes && (values.base || values.committed || values.head)) throw new UsageError('--changes already names the base and head; drop --base, --committed and --head');
+  if (values.head !== undefined && command === 'files') throw new UsageError('--head works with diff and changes only');
+  if (values.head !== undefined && values.committed) throw new UsageError('--head and --committed conflict: --head already leaves out uncommitted work');
 }
 
 /** Where to look for the repo: `--repo`, else the first file's folder for `files`, else the cwd. */
@@ -142,7 +151,7 @@ function writeChanges(list: ChangeList, out: string | undefined): void {
 
 /** The change for `diff` (from git) or `files` (the arguments; compared only when `--base` is given). */
 function listFor(command: string, rest: readonly string[], root: string, base: string, values: Options): { list: ChangeList; compare: boolean } {
-  if (command === 'diff') return { list: changeListFromGit(root, base, values.committed ?? false), compare: true };
+  if (command === 'diff') return { list: changeListFromGit(root, base, values.committed ?? false, values.head), compare: true };
   return { list: { repo: root, base, head: WORKING_TREE, files: rest.map((arg) => fileArg(root, arg)) }, compare: values.base !== undefined };
 }
 

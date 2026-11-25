@@ -20,8 +20,9 @@ The change list already supports a commit as `head`, and the check step already 
 
 ## Risks / Trade-offs
 
-- `--base <sha>^` on a merge commit compares with the first parent only. That is what a squash merge needs, and it is stated in the README.
+- `--base <sha>^` names the first parent. A squash commit has only one, so the check is exact; on a merge commit it covers everything the merge brought in. The README says so.
 
-## Open questions
+## Resolved questions
 
-- Should callers pass `--head` automatically for merged work, or keep it an explicit flag?
+- A head the base already contains gives an empty change, which looks like a clean result. tangle warns and suggests the `<sha>^` form instead of refusing.
+- `--head` stays an explicit flag. Callers that know a change is merged, such as a review of a squash commit, pass `--base <sha>^ --head <sha>` themselves.
