@@ -8,6 +8,7 @@ import { WORKING_TREE } from '../change/types.ts';
 import type { ChangeList } from '../change/types.ts';
 import { OxlintError } from '../check/oxlint.ts';
 import type { Report } from '../report/types.ts';
+import { accept, acceptedFile, ID_PATTERN, loadAccepted, unaccept } from './accepted.ts';
 import { alreadyInBase, changeListFromGit } from './changes.ts';
 import { check } from './check.ts';
 import { ConfigError, loadConfig, tangleHome } from './config.ts';
@@ -20,6 +21,9 @@ Commands
                                 unstaged and untracked work); with --changes, the files in that list
   files <path[:start-end]>...   check the given files or line ranges; compared with --base when given
   changes                       print the change list for the checkout (the JSON --changes reads)
+  accept <id>... --reason <text>
+                                keep these findings out of later reports until their code changes
+  unaccept <id>...              report these findings again
 
 Options
   --repo <dir>        repo root (default: the repo around the cwd)
@@ -29,6 +33,7 @@ Options
   --head <commit>     check that commit's change instead of the checkout (diff and changes);
                       a squash commit is --base <sha>^ --head <sha>
   --out <path>        report dir (default ~/.tangle/runs/<repo>/<time>); for changes, a file to write
+  --reason <text>     why the findings are accepted (accept only)
   --quiet             only print the final summary
 `;
 
@@ -66,6 +71,7 @@ interface Options {
   readonly committed?: boolean | undefined;
   readonly head?: string | undefined;
   readonly out?: string | undefined;
+  readonly reason?: string | undefined;
   readonly quiet?: boolean | undefined;
   readonly help?: boolean | undefined;
 }
@@ -77,6 +83,7 @@ const OPTIONS = {
   committed: { type: 'boolean' },
   head: { type: 'string' },
   out: { type: 'string' },
+  reason: { type: 'string' },
   quiet: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
 } as const;
@@ -97,6 +104,7 @@ async function run(argv: string[]): Promise<number> {
   const fromList = values.changes ? readList(path.resolve(values.changes)) : undefined;
   const root = fromList?.repo ?? repoRoot(path.resolve(searchStart(command, rest, values)));
   const key = repoKey(root);
+  if (command === 'accept' || command === 'unaccept') return changeAccepted(command, key, rest, values.reason);
   const { config, source } = loadConfig(key);
   const base = values.base ?? config.base;
   if (command === 'changes') {
@@ -111,7 +119,7 @@ async function run(argv: string[]): Promise<number> {
   log(`repo: ${root} (key ${key}, config: ${source})`);
   const out = values.out ? path.resolve(values.out) : path.join(tangleHome(), 'runs', key, new Date().toISOString().replaceAll(/[:.]/g, '-'));
   const report = await withSignals((signal) =>
-    check({ list, repoKey: key, config, compare, out, command: `tangle ${argv.join(' ')}`, version: packageVersion(), log, signal }),
+    check({ list, repoKey: key, config, accepted: loadAccepted(key), compare, out, command: `tangle ${argv.join(' ')}`, version: packageVersion(), log, signal }),
   );
   process.stdout.write(`${summary(report)}\nreport: ${path.join(out, 'report.md')}\n`);
   return 0;
@@ -126,13 +134,38 @@ function parseArgv(argv: string[]) {
 }
 
 function checkUsage(command: string, rest: readonly string[], values: Options): void {
-  if (!['diff', 'files', 'changes'].includes(command)) throw new UsageError(`unknown command ${command}\n${USAGE}`);
+  if (!['diff', 'files', 'changes', 'accept', 'unaccept'].includes(command)) throw new UsageError(`unknown command ${command}\n${USAGE}`);
+  if (command === 'accept' || command === 'unaccept') return checkAcceptUsage(command, rest, values);
+  if (values.reason !== undefined) throw new UsageError('--reason works with accept only');
   if (command !== 'files' && rest.length > 0) throw new UsageError(`${command} takes no paths`);
   if (command === 'files' && rest.length === 0) throw new UsageError('files: give at least one path');
   if (values.changes && command !== 'diff') throw new UsageError('--changes works with diff only');
   if (values.changes && (values.base || values.committed || values.head)) throw new UsageError('--changes already names the base and head; drop --base, --committed and --head');
   if (values.head !== undefined && command === 'files') throw new UsageError('--head works with diff and changes only');
   if (values.head !== undefined && values.committed) throw new UsageError('--head and --committed conflict: --head already leaves out uncommitted work');
+}
+
+function checkAcceptUsage(command: string, ids: readonly string[], values: Options): void {
+  const other = (['base', 'changes', 'committed', 'head', 'out'] as const).filter((k) => values[k] !== undefined);
+  if (other.length > 0) throw new UsageError(`${command} takes no ${other.map((k) => `--${k}`).join(', ')}`);
+  if (ids.length === 0) throw new UsageError(`${command}: give at least one finding id`);
+  const bad = ids.filter((id) => !ID_PATTERN.test(id));
+  if (bad.length > 0) throw new UsageError(`${command}: not a finding id: ${bad.join(', ')}`);
+  if (command === 'unaccept' && values.reason !== undefined) throw new UsageError('--reason works with accept only');
+  if (command === 'accept' && !values.reason?.trim()) throw new UsageError('accept: give a --reason');
+}
+
+function changeAccepted(command: 'accept' | 'unaccept', key: string, ids: readonly string[], reason: string | undefined): number {
+  const unique = [...new Set(ids)];
+  if (command === 'accept') {
+    accept(key, unique, reason!.trim(), new Date());
+    process.stdout.write(`accepted ${unique.length} finding(s) in ${acceptedFile(key)}\n`);
+    return 0;
+  }
+  const missing = unaccept(key, unique);
+  if (missing.length > 0) throw new UsageError(`unaccept: not accepted: ${missing.join(', ')}; nothing changed`);
+  process.stdout.write(`unaccepted ${unique.length} finding(s) in ${acceptedFile(key)}\n`);
+  return 0;
 }
 
 /** Where to look for the repo: `--repo`, else the first file's folder for `files`, else the cwd. */
@@ -170,8 +203,9 @@ async function withSignals<T>(work: (signal: AbortSignal) => Promise<T>): Promis
 
 function summary(report: Report): string {
   const medium = report.findings.filter((f) => f.severity === 'medium').length;
+  const accepted = report.accepted.length > 0 ? `, ${report.accepted.length} accepted` : '';
   const warn = report.warnings.length > 0 ? `, ${report.warnings.length} warning(s)` : '';
-  return `${report.checked.length} file(s) checked, ${report.findings.length} finding(s) (${medium} medium)${warn}, ${(report.durationMs / 1000).toFixed(1)}s`;
+  return `${report.checked.length} file(s) checked, ${report.findings.length} finding(s) (${medium} medium)${accepted}${warn}, ${(report.durationMs / 1000).toFixed(1)}s`;
 }
 
 function readList(file: string): ChangeList {

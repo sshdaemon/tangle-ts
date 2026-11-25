@@ -8,7 +8,7 @@ The `tangle` command line runs checks on a checkout's diff, a change list or giv
 
 ### Requirement: Commands
 
-The CLI SHALL offer `diff` (the checkout against the base, or the files in `--changes`), `files <path[:start-end]>...` (given files or ranges, compared only with `--base`) and `changes` (print or write the change list).
+The CLI SHALL offer `diff` (the checkout against the base, or the files in `--changes`), `files <path[:start-end]>...` (given files or ranges, compared only with `--base`), `changes` (print or write the change list), and `accept <id>... --reason <text>` and `unaccept <id>...` (keep findings out of later reports, or bring them back).
 
 #### Scenario: Files without a base
 
@@ -41,7 +41,7 @@ The exit code SHALL be 0 when the run finished, whatever it found; 2 for bad usa
 
 ### Requirement: Output
 
-A finished run SHALL print one summary line (files checked, findings, medium findings, warnings when there are any, time) and the path of `report.md` on stdout. Progress SHALL go to stderr and `--quiet` SHALL silence it. Without `--out`, reports SHALL go to a new folder under `<home>/runs/<repo>/`, where `<home>` is `TANGLE_HOME` or `~/.tangle`.
+A finished run SHALL print one summary line (files checked, findings, medium findings, accepted findings and warnings when there are any, time) and the path of `report.md` on stdout. Progress SHALL go to stderr and `--quiet` SHALL silence it. Without `--out`, reports SHALL go to a new folder under `<home>/runs/<repo>/`, where `<home>` is `TANGLE_HOME` or `~/.tangle`.
 
 #### Scenario: Quiet run
 

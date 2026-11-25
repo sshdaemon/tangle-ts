@@ -1,4 +1,4 @@
-import type { Report } from './types.ts';
+import type { Finding, Report } from './types.ts';
 
 export function renderMarkdown(r: Report): string {
   const lines: string[] = [`# tangle report`, ``, `Repo: ${r.repo}  `, `Run: ${r.createdAt}  `, `Command: \`${r.command}\`  `];
@@ -7,16 +7,25 @@ export function renderMarkdown(r: Report): string {
   if (r.warnings.length > 0) lines.push(`## Warnings`, ``, ...r.warnings.map((w) => `- ${w}`), ``);
   if (r.dropped.length > 0) lines.push(`## Skipped`, ``, ...r.dropped.map((d) => `- ${d.path}: ${d.reason}`), ``);
   lines.push(`## Findings (${r.findings.length})`, ``);
-  if (r.findings.length === 0) lines.push(`None.`);
-  const byFile = new Map<string, Report['findings'][number][]>();
-  for (const f of r.findings) {
-    const file = f.where.replace(/:\d+:\d+$/, '');
-    byFile.set(file, [...(byFile.get(file) ?? []), f]);
-  }
-  for (const [file, list] of byFile) {
+  if (r.findings.length === 0) lines.push(`None.`, ``);
+  for (const [file, list] of byFile(r.findings)) {
     lines.push(`### ${file}`, ``);
     for (const f of list) lines.push(`- ${f.where.slice(file.length + 1)} [${f.severity}] ${f.claim} (\`${f.rule}\`, ${f.id})`);
     lines.push(``);
   }
+  if (r.accepted.length > 0) {
+    lines.push(`## Accepted (${r.accepted.length})`, ``);
+    for (const f of r.accepted) lines.push(`- ${f.where} ${f.claim} (\`${f.rule}\`, ${f.id}): ${f.reason}`);
+    lines.push(``);
+  }
   return lines.join('\n');
+}
+
+function byFile<T extends Finding>(findings: readonly T[]): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const f of findings) {
+    const file = f.where.replace(/:\d+:\d+$/, '');
+    out.set(file, [...(out.get(file) ?? []), f]);
+  }
+  return out;
 }

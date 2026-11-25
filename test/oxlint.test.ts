@@ -59,7 +59,7 @@ test('runOxlint runs nothing for no files and names the failure of a bad binary'
 });
 
 test('renderMarkdown lists warnings, skipped files and findings by file', () => {
-  const base: Report = { tool: 'tangle-ts', version: '0', createdAt: 't', repo: '/r', command: 'c', base: null, checked: [], dropped: [], warnings: [], durationMs: 0, findings: [] };
+  const base: Report = { tool: 'tangle-ts', version: '0', createdAt: 't', repo: '/r', command: 'c', base: null, checked: [], dropped: [], warnings: [], durationMs: 0, findings: [], accepted: [] };
   assert.match(renderMarkdown(base), /## Findings \(0\)\n\nNone\./);
   assert.match(renderMarkdown(base), /Compared with: nothing/);
   const f = (where: string) => ({ id: 'tg-1', severity: 'low' as const, category: 'complexity' as const, where, claim: 'c', evidence: 'e', rule: 'r', function: 'f' });
@@ -75,4 +75,7 @@ test('renderMarkdown lists warnings, skipped files and findings by file', () => 
   assert.match(md, /## Skipped\n\n- x\.json: not ts\n/);
   assert.match(md, /### a\.ts\n\n- 1:2 \[low\] c \(`r`, tg-1\)\n- 5:6 \[low\] c/);
   assert.doesNotMatch(md, /None\./);
+  assert.doesNotMatch(md, /## Accepted/);
+  const withAccepted = renderMarkdown({ ...base, accepted: [{ ...f('c.ts:7:8'), reason: 'flat switch', acceptedAt: 't' }] });
+  assert.match(withAccepted, /## Findings \(0\)\n\nNone\.\n\n## Accepted \(1\)\n\n- c\.ts:7:8 c \(`r`, tg-1\): flat switch\n$/);
 });

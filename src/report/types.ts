@@ -15,6 +15,12 @@ export interface Finding {
   readonly count?: { readonly before?: number | null; readonly after: number };
 }
 
+/** A finding whose id was accepted, with the reason given. */
+export interface AcceptedFinding extends Finding {
+  readonly reason: string;
+  readonly acceptedAt: string;
+}
+
 export interface Report {
   readonly tool: 'tangle-ts';
   readonly version: string;
@@ -28,4 +34,6 @@ export interface Report {
   readonly warnings: readonly string[];
   readonly durationMs: number;
   readonly findings: readonly Finding[];
+  /** Findings left out of `findings` because their id was accepted. */
+  readonly accepted: readonly AcceptedFinding[];
 }

@@ -250,3 +250,36 @@ test('a committed or given-commit change list leaves out uncommitted and untrack
   assert.deepEqual([given.head, paths(given).includes('src/fresh.ts')], [sha, false]);
 });
 
+
+test('an accepted finding is listed as accepted until its function changes', async () => {
+  const run = async (text: string, accepted: Map<string, { reason: string; acceptedAt: string }>) => {
+    writeFileSync(path.join(repo, 'src/accepted.ts'), text);
+    const list = { repo, base: 'main', head: 'working-tree', files: [{ path: 'src/accepted.ts', status: 'modified' as const, ranges: 'whole' as const }] };
+    return check({ list, repoKey: 'fixture', config: DEFAULTS, accepted, compare: false, out, command: 'test', version: '0', log: () => {} });
+  };
+  const first = await run(tangled('big', 2), new Map());
+  const ids = first.findings.map((f) => f.id);
+  assert.deepEqual([ids.length, first.accepted], [2, []]);
+  const accepted = new Map(ids.map((id) => [id, { reason: 'flat enough', acceptedAt: '2026-11-21T00:00:00.000Z' }]));
+  const again = await run(`// moved down\n${tangled('big', 2)}`, accepted);
+  assert.deepEqual(again.findings, []);
+  assert.deepEqual(again.accepted.map((f) => [f.id, f.reason, f.acceptedAt, f.where.split(':')[1]]), ids.map((id, i) => [id, 'flat enough', '2026-11-21T00:00:00.000Z', String(Number(first.findings[i]!.where.split(':')[1]) + 1)]));
+  const report = JSON.parse(readFileSync(path.join(out, 'report.json'), 'utf8'));
+  assert.deepEqual([report.findings, report.accepted.map((f: { id: string }) => f.id)], [[], ids]);
+  const edited = await run(tangled('big', 2).replace('let n = 0;', 'let n = 1;'), accepted);
+  assert.deepEqual([edited.findings.length, edited.accepted], [2, []]);
+  assert.ok(edited.findings.every((f) => !ids.includes(f.id)));
+});
+
+test('a module-level size id follows the whole file', async () => {
+  const text = 'export const pick = Math.random() > 0.5 ? (Math.random() > 0.5 ? 1 : 2) : 3;\nexport const f = (a: number) => a;\n';
+  const id = async (t: string) => {
+    writeFileSync(path.join(repo, 'src/module-id.ts'), t);
+    const list = { repo, base: 'main', head: 'working-tree', files: [{ path: 'src/module-id.ts', status: 'modified' as const, ranges: 'whole' as const }] };
+    const report = await check({ list, repoKey: 'fixture', config: DEFAULTS, compare: false, out, command: 'test', version: '0', log: () => {} });
+    return report.findings.find((f) => f.function === '<module>')!.id;
+  };
+  const first = await id(text);
+  assert.equal(await id(text.replace('\n', '\n\n')), first);
+  assert.notEqual(await id(text.replace('=> a', '=> a + 1')), first);
+});

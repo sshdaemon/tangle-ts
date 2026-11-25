@@ -34,9 +34,11 @@ node bin/tangle.js diff --base <sha>^ --head <sha>   # a squash-merged commit, w
 node bin/tangle.js changes --out changes.json   # write the change list
 node bin/tangle.js diff --changes changes.json  # check exactly the files and lines in a list
 node bin/tangle.js files src/a.ts:10-40 src/b.ts [--base origin/develop]
+node bin/tangle.js accept tg-1a2b3c4d5e --reason "flat switch, reads fine"
+node bin/tangle.js unaccept tg-1a2b3c4d5e
 ```
 
-Options: `--repo`, `--base`, `--changes`, `--committed`, `--head`, `--out`, `--quiet`. `node bin/tangle.js --help` lists them. `files` without `--base` reports every hit in range instead of comparing.
+Options: `--repo`, `--base`, `--changes`, `--committed`, `--head`, `--out`, `--reason`, `--quiet`. `node bin/tangle.js --help` lists them. `files` without `--base` reports every hit in range instead of comparing.
 
 Needs Node 22.18 or later (the CLI runs the TypeScript sources directly) and `git`.
 
@@ -62,10 +64,14 @@ The `--changes` file is shared with weakspot-ts: the same JSON, read by both too
 
 Per-project settings live outside the project, in `~/.tangle/repos/<repo>.json`, where `<repo>` is the origin remote's name (so worktrees share the main checkout's settings), or the main checkout's folder name without a remote. See [config/example.json](config/example.json). Keys: `base`, `skip` (regexes on the repo-relative path), `specs` (`bugRules`, `skip` or `all`), `thresholds`, `raiseAt` (a size finding is medium when its score rose by at least this much, otherwise low; new code rises from zero), `oxlint` (a different oxlint binary).
 
+## Accepting findings
+
+`accept` records finding ids with a reason in `~/.tangle/repos/<repo>.accepted.json`, next to the settings and outside the project. Later runs move those findings from `findings` to `accepted` in `report.json`, list them with their reason under "Accepted" in `report.md`, and leave them out of the finding counts. Because ids follow the code, an accepted finding comes back as a new one when its function (or, for module-level code, its file) changes. `unaccept` drops ids again, and changes nothing if any of them was not accepted. When one of the last 20 reports under `~/.tangle/runs/<repo>/` has the id, its rule and place are stored with it.
+
 ## Reading a report
 
 - Size findings carry `score` (cognitive and expression complexity: highest before and after) or `count` (places over the limit before and after). `before` is null for new code.
-- Finding ids hash the repo, file, rule and function name plus the function's text (size findings) or the flagged lines (bug findings), not line numbers, so a finding keeps its id when code moves.
+- Finding ids hash the repo, file, rule and function name plus the function's text (size findings; the whole file's text for module-level code) or the flagged lines (bug findings), not line numbers, so a finding keeps its id when code moves.
 - Complexity that moves between functions reads as new: logic pulled out of a callback into its method shows the method going from 0 to the callback's old score.
 
 ## Limits

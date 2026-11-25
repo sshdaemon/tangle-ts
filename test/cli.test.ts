@@ -49,6 +49,14 @@ test('usage errors exit 2 with a message', () => {
   assert.match(tangle('files', 'a.ts', '--head', 'HEAD').err, /^--head works with diff and changes only/);
   assert.match(tangle('diff', '--changes', 'x.json', '--head', 'HEAD').err, /^--changes already names the base and head/);
   assert.deepEqual([tangle('files', 'a.ts:40-10').code, tangle('files', 'a.ts:40-10').err], [2, 'a.ts:40-10: invalid line range 40-10\n']);
+  assert.match(tangle('accept', '--reason', 'r').err, /^accept: give at least one finding id/);
+  assert.match(tangle('accept', 'tg-0123456789', 'x1', '--reason', 'r').err, /^accept: not a finding id: x1\n/);
+  assert.match(tangle('accept', 'tg-0123456789').err, /^accept: give a --reason/);
+  assert.match(tangle('accept', 'tg-0123456789', '--reason', ' ').err, /^accept: give a --reason/);
+  assert.match(tangle('accept', 'tg-0123456789', '--reason', 'r', '--base', 'main', '--committed').err, /^accept takes no --base, --committed\n/);
+  assert.match(tangle('unaccept', 'tg-0123456789', '--reason', 'r').err, /^--reason works with accept only/);
+  assert.match(tangle('unaccept').err, /^unaccept: give at least one finding id/);
+  assert.deepEqual([tangle('diff', '--reason', 'r').code, tangle('diff', '--reason', 'r').err], [2, '--reason works with accept only\n']);
 });
 
 test('changes prints or writes the list; diff and files check it', () => {
@@ -121,3 +129,27 @@ test('--head checks a commit whatever is checked out', () => {
   assert.deepEqual([missing.code, /Needed a single revision/.test(missing.err)], [1, true]);
 });
 
+
+test('accept keeps a finding out of the next run until it is unaccepted', () => {
+  const run = (dir: string) => {
+    const r = tangle('diff', '--base', 'main', '--out', `out/${dir}`);
+    return { ...r, report: JSON.parse(readFileSync(path.join(repo, 'out', dir, 'report.json'), 'utf8')) };
+  };
+  const status = () => execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' });
+  const before = status();
+  const first = run('acc1');
+  const id = first.report.findings[0].id as string;
+  const accepted = tangle('accept', id, id, '--reason', ' same key twice ');
+  assert.deepEqual([accepted.code, accepted.out], [0, `accepted 1 finding(s) in ${path.join(home, 'repos', `${path.basename(repo)}.accepted.json`)}\n`]);
+  assert.equal(status(), before);
+  const second = run('acc2');
+  assert.deepEqual([second.report.findings, second.report.accepted.map((f: { id: string; reason: string }) => [f.id, f.reason])], [[], [[id, 'same key twice']]]);
+  assert.match(second.out, /^1 file\(s\) checked, 0 finding\(s\) \(0 medium\), 1 accepted, \d+\.\ds\n/);
+  assert.match(readFileSync(path.join(repo, 'out/acc2/report.md'), 'utf8'), /## Accepted \(1\)\n\n- a\.ts:1:\d+ .*: same key twice\n/);
+
+  const missing = tangle('unaccept', id, 'tg-ffffffffff');
+  assert.deepEqual([missing.code, missing.err], [2, 'unaccept: not accepted: tg-ffffffffff; nothing changed\n']);
+  assert.equal(run('acc3').report.accepted.length, 1);
+  assert.match(tangle('unaccept', id).out, /^unaccepted 1 finding\(s\) in /);
+  assert.deepEqual(run('acc4').report.findings.map((f: { id: string }) => f.id), [id]);
+});

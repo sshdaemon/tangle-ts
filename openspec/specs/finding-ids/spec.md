@@ -8,7 +8,7 @@ Finding ids let a reviewer accept a finding once and recognise it again on the n
 
 ### Requirement: Ids ignore line numbers
 
-A finding id SHALL start with `tg-` and SHALL be derived from the repo, file, rule and function name, not from line numbers. A size finding's id SHALL also use its function's text, and a bug finding's id the text of the flagged lines, each with whitespace collapsed.
+A finding id SHALL start with `tg-` and SHALL be derived from the repo, file, rule and function name, not from line numbers. A size finding's id SHALL also use its function's text, or the whole file's text for module-level code, and a bug finding's id the text of the flagged lines, each with whitespace collapsed.
 
 #### Scenario: Code moves down
 
@@ -24,6 +24,11 @@ A finding id SHALL start with `tg-` and SHALL be derived from the repo, file, ru
 
 - **WHEN** the flagged line of a bug finding changes
 - **THEN** the bug finding gets a new id, while edits to other lines of the function keep it
+
+#### Scenario: Module-level size finding
+
+- **WHEN** any code in a file with a module-level size finding changes
+- **THEN** that finding gets a new id, while added blank lines keep it
 
 ### Requirement: Repeated bug hits are told apart
 

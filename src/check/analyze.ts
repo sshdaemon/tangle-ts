@@ -134,7 +134,8 @@ function sizeFinding(input: FileInput, g: SizeGroup, opts: AnalyzeOptions): Find
   // `before` is null for new code and left out when nothing was compared.
   const prior = (n: number) => (g.how === 'uncompared' ? {} : { before: g.how === 'new' ? null : n });
   return {
-    id: idOf(opts.repoKey, input.file.path, g.rule.id, name, g.fn?.hash ?? ''),
+    // Module-level code has no function text, so its id follows the whole file.
+    id: idOf(opts.repoKey, input.file.path, g.rule.id, name, g.fn?.hash ?? hashText(input.head.text)),
     severity: g.rule.score && rise >= opts.raiseAt ? 'medium' : 'low',
     category: g.rule.category,
     rule: g.rule.id,

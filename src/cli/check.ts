@@ -12,6 +12,8 @@ import type { Diagnostic } from '../check/oxlint.ts';
 import { RULES } from '../check/rules.ts';
 import { renderMarkdown } from '../report/render.ts';
 import type { Report } from '../report/types.ts';
+import { partition } from './accepted.ts';
+import type { Accepted } from './accepted.ts';
 import type { ToolConfig } from './config.ts';
 import { alreadyInBase } from './changes.ts';
 import { git, mergeBase, showFile } from './git.ts';
@@ -20,6 +22,8 @@ export interface CheckInput {
   readonly list: ChangeList;
   readonly repoKey: string;
   readonly config: ToolConfig;
+  /** Accepted finding ids, moved out of the findings. */
+  readonly accepted?: Accepted;
   /** Compare with the file at merge-base(base, head); false reports every hit in range. */
   readonly compare: boolean;
   readonly out: string;
@@ -90,7 +94,7 @@ export async function check(input: CheckInput): Promise<Report> {
         },
       ];
     });
-    const findings = analyze(inputs, { thresholds: config.thresholds, raiseAt: config.raiseAt, repoKey: input.repoKey });
+    const { findings, accepted } = partition(analyze(inputs, { thresholds: config.thresholds, raiseAt: config.raiseAt, repoKey: input.repoKey }), input.accepted ?? new Map());
     const report: Report = {
       tool: 'tangle-ts',
       version: input.version,
@@ -103,6 +107,7 @@ export async function check(input: CheckInput): Promise<Report> {
       warnings,
       durationMs: Date.now() - started,
       findings,
+      accepted,
     };
     mkdirSync(input.out, { recursive: true });
     writeFileSync(path.join(input.out, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
