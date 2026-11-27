@@ -1,5 +1,7 @@
 # tangle-ts
 
+<img src="docs/logo.png" alt="tangle-ts" width="150">
+
 Complexity and logic-smell checks on the lines a change touched, for TypeScript projects. It reports a function only when the change made it harder to follow, and flags code that is almost always a mistake (`x === x`, a condition repeated in an `else if`, branches that all do the same thing) wherever it lands on a changed line.
 
 A local tool for reviewing changes with a person or an agent. Nothing is installed into or written inside the project: oxlint and `eslint-plugin-sonarjs` are pinned in this repo, and reports go to `~/.tangle/`.
