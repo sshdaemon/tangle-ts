@@ -83,6 +83,10 @@ Per-project settings live outside the project, in `~/.tangle/repos/<repo>.json`,
 - `--base <sha>^` names the first parent, so on a merge commit `--head <sha>` checks everything the merge brought in.
 - A file that does not parse is skipped with a warning; when only its before version does not parse, it is reported without comparing.
 
+## With a review loop
+
+The [fresh-eyes](https://github.com/sshdaemon/workbench) review loop runs tangle as its static check every round and hands the report to its reviewer; findings left as they are get accepted with the ledger entry as the reason. Its [profile recipes](https://github.com/sshdaemon/workbench/blob/main/plugins/fresh-eyes/PROFILE.md#recipes) have the commands to set it up.
+
 ## Develop
 
 ```bash
